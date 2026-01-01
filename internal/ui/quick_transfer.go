@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Gu1llaum-3/sshm/internal/history"
-	"github.com/Gu1llaum-3/sshm/internal/transfer"
+	"github.com/xvertile/sshc/internal/history"
+	"github.com/xvertile/sshc/internal/transfer"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

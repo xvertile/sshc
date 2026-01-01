@@ -43,7 +43,7 @@ func NewSSHFSMount(host, remotePath, configFile string) (*SSHFSMount, error) {
 	}
 
 	// Create a temporary mount point
-	mountPoint, err := os.MkdirTemp("", fmt.Sprintf("sshm-%s-", host))
+	mountPoint, err := os.MkdirTemp("", fmt.Sprintf("sshc-%s-", host))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create mount point: %w", err)
 	}

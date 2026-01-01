@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Gu1llaum-3/sshm/internal/config"
-	"github.com/Gu1llaum-3/sshm/internal/connectivity"
-	"github.com/Gu1llaum-3/sshm/internal/history"
+	"github.com/xvertile/sshc/internal/config"
+	"github.com/xvertile/sshc/internal/connectivity"
+	"github.com/xvertile/sshc/internal/history"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"

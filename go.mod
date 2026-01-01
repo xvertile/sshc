@@ -1,4 +1,4 @@
-module github.com/Gu1llaum-3/sshm
+module github.com/xvertile/sshc
 
 go 1.23.1
 

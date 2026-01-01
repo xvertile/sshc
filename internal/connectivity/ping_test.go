@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Gu1llaum-3/sshm/internal/config"
+	"github.com/xvertile/sshc/internal/config"
 )
 
 func TestNewPingManager(t *testing.T) {

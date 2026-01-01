@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/Gu1llaum-3/sshm/internal/ui"
+	"github.com/xvertile/sshc/internal/ui"
 
 	"github.com/spf13/cobra"
 )

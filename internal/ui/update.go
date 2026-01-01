@@ -6,10 +6,10 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/Gu1llaum-3/sshm/internal/config"
-	"github.com/Gu1llaum-3/sshm/internal/connectivity"
-	"github.com/Gu1llaum-3/sshm/internal/transfer"
-	"github.com/Gu1llaum-3/sshm/internal/version"
+	"github.com/xvertile/sshc/internal/config"
+	"github.com/xvertile/sshc/internal/connectivity"
+	"github.com/xvertile/sshc/internal/transfer"
+	"github.com/xvertile/sshc/internal/version"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"

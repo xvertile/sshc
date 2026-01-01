@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Gu1llaum-3/sshm/internal/history"
-	"github.com/Gu1llaum-3/sshm/internal/transfer"
+	"github.com/xvertile/sshc/internal/history"
+	"github.com/xvertile/sshc/internal/transfer"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"

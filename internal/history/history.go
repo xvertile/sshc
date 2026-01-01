@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Gu1llaum-3/sshm/internal/config"
+	"github.com/xvertile/sshc/internal/config"
 )
 
 // ConnectionHistory represents the history of SSH connections
@@ -59,7 +59,7 @@ func NewHistoryManager() (*HistoryManager, error) {
 		return nil, err
 	}
 
-	historyPath := filepath.Join(configDir, "sshm_history.json")
+	historyPath := filepath.Join(configDir, "sshc_history.json")
 
 	// Migration: check if old history file exists and migrate it
 	if err := migrateOldHistoryFile(historyPath); err != nil {
@@ -84,7 +84,7 @@ func NewHistoryManager() (*HistoryManager, error) {
 	return hm, nil
 }
 
-// migrateOldHistoryFile migrates the old history file from ~/.ssh to ~/.config/sshm
+// migrateOldHistoryFile migrates the old history file from ~/.ssh to ~/.config/sshc
 // TODO: Remove this migration logic in v2.0.0 (introduced in v1.6.0)
 func migrateOldHistoryFile(newHistoryPath string) error {
 	// Check if new file already exists, skip migration
@@ -97,7 +97,7 @@ func migrateOldHistoryFile(newHistoryPath string) error {
 	if err != nil {
 		return err
 	}
-	oldHistoryPath := filepath.Join(sshDir, "sshm_history.json")
+	oldHistoryPath := filepath.Join(sshDir, "sshc_history.json")
 
 	// Check if old file exists
 	if _, err := os.Stat(oldHistoryPath); os.IsNotExist(err) {

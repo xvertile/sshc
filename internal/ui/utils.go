@@ -2,7 +2,7 @@ package ui
 
 import (
 	"fmt"
-	"github.com/Gu1llaum-3/sshm/internal/connectivity"
+	"github.com/xvertile/sshc/internal/connectivity"
 	"strings"
 	"time"
 )

@@ -11,7 +11,7 @@ import (
 func createTestHistoryManager(t *testing.T) *HistoryManager {
 	// Create temporary directory
 	tempDir := t.TempDir()
-	historyPath := filepath.Join(tempDir, "test_sshm_history.json")
+	historyPath := filepath.Join(tempDir, "test_sshc_history.json")
 
 	hm := &HistoryManager{
 		historyPath: historyPath,
@@ -101,7 +101,7 @@ func TestMigrateOldHistoryFile(t *testing.T) {
 	// The actual migration logic will be tested in integration tests
 
 	tempDir := t.TempDir()
-	newHistoryPath := filepath.Join(tempDir, "sshm_history.json")
+	newHistoryPath := filepath.Join(tempDir, "sshc_history.json")
 
 	// Test that migration works when no old file exists (common case)
 	if err := migrateOldHistoryFile(newHistoryPath); err != nil {
@@ -130,7 +130,7 @@ func TestMigrateOldHistoryFile(t *testing.T) {
 func TestMigrateOldHistoryFile_NoOldFile(t *testing.T) {
 	// Test migration when no old file exists
 	tempDir := t.TempDir()
-	newHistoryPath := filepath.Join(tempDir, "sshm_history.json")
+	newHistoryPath := filepath.Join(tempDir, "sshc_history.json")
 
 	// Should not return error when old file doesn't exist
 	if err := migrateOldHistoryFile(newHistoryPath); err != nil {
@@ -141,7 +141,7 @@ func TestMigrateOldHistoryFile_NoOldFile(t *testing.T) {
 func TestMigrateOldHistoryFile_NewFileExists(t *testing.T) {
 	// Test migration when new file already exists (should skip migration)
 	tempDir := t.TempDir()
-	newHistoryPath := filepath.Join(tempDir, "sshm_history.json")
+	newHistoryPath := filepath.Join(tempDir, "sshc_history.json")
 
 	// Create new file first
 	if err := os.WriteFile(newHistoryPath, []byte(`{"connections":{}}`), 0644); err != nil {

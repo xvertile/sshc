@@ -131,7 +131,7 @@ func TestMergeWithDefaults(t *testing.T) {
 
 func TestSaveAndLoadAppConfigIntegration(t *testing.T) {
 	// Create a temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "sshm_test")
+	tempDir, err := os.MkdirTemp("", "sshc_test")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}

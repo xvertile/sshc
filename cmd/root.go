@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Gu1llaum-3/sshm/internal/config"
-	"github.com/Gu1llaum-3/sshm/internal/history"
-	"github.com/Gu1llaum-3/sshm/internal/ui"
-	"github.com/Gu1llaum-3/sshm/internal/version"
+	"github.com/xvertile/sshc/internal/config"
+	"github.com/xvertile/sshc/internal/history"
+	"github.com/xvertile/sshc/internal/ui"
+	"github.com/xvertile/sshc/internal/version"
 
 	"github.com/spf13/cobra"
 )
@@ -26,15 +26,15 @@ var configFile string
 
 // RootCmd is the base command when called without any subcommands
 var RootCmd = &cobra.Command{
-	Use:   "sshm [host]",
+	Use:   "sshc [host]",
 	Short: "SSH Manager - A modern SSH connection manager",
 	Long: `SSHM is a modern SSH manager for your terminal.
 
 Main usage:
-  Running 'sshm' (without arguments) opens the interactive TUI window to browse, search, and connect to your SSH hosts graphically.
-  Running 'sshm <host>' connects directly to the specified host and records the connection in your history.
+  Running 'sshc' (without arguments) opens the interactive TUI window to browse, search, and connect to your SSH hosts graphically.
+  Running 'sshc <host>' connects directly to the specified host and records the connection in your history.
 
-You can also use sshm in CLI mode for other operations like adding, editing, or searching hosts.
+You can also use sshc in CLI mode for other operations like adding, editing, or searching hosts.
 
 Hosts are read from your ~/.ssh/config file by default.`,
 	Version:       AppVersion,
@@ -119,7 +119,7 @@ func connectToHost(hostName string) {
 
 	if !hostFound {
 		fmt.Printf("Error: Host '%s' not found in SSH configuration.\n", hostName)
-		fmt.Println("Use 'sshm' to see available hosts.")
+		fmt.Println("Use 'sshc' to see available hosts.")
 		os.Exit(1)
 	}
 
@@ -173,7 +173,7 @@ func connectToHost(hostName string) {
 
 // getVersionWithUpdateCheck returns a custom version string with update check
 func getVersionWithUpdateCheck() string {
-	versionText := fmt.Sprintf("sshm version %s", AppVersion)
+	versionText := fmt.Sprintf("sshc version %s", AppVersion)
 
 	// Check for updates
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

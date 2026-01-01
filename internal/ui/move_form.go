@@ -3,7 +3,7 @@ package ui
 import (
 	"fmt"
 
-	"github.com/Gu1llaum-3/sshm/internal/config"
+	"github.com/xvertile/sshc/internal/config"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

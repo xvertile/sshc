@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Gu1llaum-3/sshm/internal/config"
-	"github.com/Gu1llaum-3/sshm/internal/history"
-	"github.com/Gu1llaum-3/sshm/internal/transfer"
-	"github.com/Gu1llaum-3/sshm/internal/ui"
+	"github.com/xvertile/sshc/internal/config"
+	"github.com/xvertile/sshc/internal/history"
+	"github.com/xvertile/sshc/internal/transfer"
+	"github.com/xvertile/sshc/internal/ui"
 
 	"github.com/spf13/cobra"
 )
@@ -26,16 +26,16 @@ Local paths can be relative or absolute.
 
 Examples:
   # Upload a file
-  sshm cp ./local-file.txt myhost:/remote/path/
+  sshc cp ./local-file.txt myhost:/remote/path/
 
   # Download a file
-  sshm cp myhost:/var/log/app.log ./downloads/
+  sshc cp myhost:/var/log/app.log ./downloads/
 
   # Upload a directory (recursive)
-  sshm cp -r ./my-folder myhost:/remote/path/
+  sshc cp -r ./my-folder myhost:/remote/path/
 
   # Interactive mode (opens transfer UI)
-  sshm cp myhost`,
+  sshc cp myhost`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// If only one argument (host), open interactive transfer UI
@@ -138,10 +138,10 @@ var sendCmd = &cobra.Command{
 
 Examples:
   # Upload with native file picker
-  sshm send myhost
+  sshc send myhost
 
   # Upload a specific file
-  sshm send myhost ./file.txt`,
+  sshc send myhost ./file.txt`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		hostName := args[0]
@@ -254,13 +254,13 @@ var getCmd = &cobra.Command{
 
 Examples:
   # Browse remote files to download (opens TUI file browser)
-  sshm get myhost
+  sshc get myhost
 
   # Download a specific file (opens local folder picker for destination)
-  sshm get myhost /var/log/app.log
+  sshc get myhost /var/log/app.log
 
   # Download to specific location (no pickers)
-  sshm get myhost /var/log/app.log ./downloads/`,
+  sshc get myhost /var/log/app.log ./downloads/`,
 	Args: cobra.RangeArgs(1, 3),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		hostName := args[0]

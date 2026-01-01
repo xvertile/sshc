@@ -8,7 +8,7 @@ import (
 
 func TestPortForwardingHistory(t *testing.T) {
 	// Create temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "sshm_test_*")
+	tempDir, err := os.MkdirTemp("", "sshc_test_*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestPortForwardingHistory(t *testing.T) {
 
 func TestPortForwardingHistoryPersistence(t *testing.T) {
 	// Create temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "sshm_test_*")
+	tempDir, err := os.MkdirTemp("", "sshc_test_*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestPortForwardingHistoryPersistence(t *testing.T) {
 
 func TestGetPortForwardingConfigNonExistent(t *testing.T) {
 	// Create temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "sshm_test_*")
+	tempDir, err := os.MkdirTemp("", "sshc_test_*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}

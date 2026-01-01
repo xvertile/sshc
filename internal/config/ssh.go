@@ -55,20 +55,20 @@ func GetSSHMConfigDir() (string, error) {
 	var configDir string
 	switch runtime.GOOS {
 	case "windows":
-		// Use %APPDATA%/sshm on Windows
+		// Use %APPDATA%/sshc on Windows
 		appData := os.Getenv("APPDATA")
 		if appData != "" {
-			configDir = filepath.Join(appData, "sshm")
+			configDir = filepath.Join(appData, "sshc")
 		} else {
-			configDir = filepath.Join(homeDir, ".config", "sshm")
+			configDir = filepath.Join(homeDir, ".config", "sshc")
 		}
 	default:
 		// Use XDG Base Directory specification
 		xdgConfigDir := os.Getenv("XDG_CONFIG_HOME")
 		if xdgConfigDir != "" {
-			configDir = filepath.Join(xdgConfigDir, "sshm")
+			configDir = filepath.Join(xdgConfigDir, "sshc")
 		} else {
-			configDir = filepath.Join(homeDir, ".config", "sshm")
+			configDir = filepath.Join(homeDir, ".config", "sshc")
 		}
 	}
 
@@ -111,7 +111,7 @@ func ensureSSHDirectory() error {
 // configMutex protects SSH config file operations from race conditions
 var configMutex sync.Mutex
 
-// backupConfig creates a backup of the SSH config file in ~/.config/sshm/backups/
+// backupConfig creates a backup of the SSH config file in ~/.config/sshc/backups/
 func backupConfig(configPath string) error {
 	// Get backup directory and ensure it exists
 	backupDir, err := GetSSHMBackupDir()
@@ -399,7 +399,7 @@ func processIncludeDirective(pattern string, baseConfigPath string, processedFil
 			continue
 		}
 
-		// Skip backup files created by sshm (*.backup)
+		// Skip backup files created by sshc (*.backup)
 		if strings.HasSuffix(match, ".backup") {
 			continue
 		}

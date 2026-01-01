@@ -4,12 +4,12 @@
 VERSION ?= dev
 
 # Go build flags
-LDFLAGS := -s -w -X github.com/Gu1llaum-3/sshm/cmd.AppVersion=$(VERSION)
+LDFLAGS := -s -w -X github.com/xvertile/sshc/cmd.AppVersion=$(VERSION)
 
 # Build with specific version
 build:
 	@mkdir -p dist
-	go build -ldflags="$(LDFLAGS)" -o dist/sshm .
+	go build -ldflags="$(LDFLAGS)" -o dist/sshc .
 
 # Build with git version
 build-local: VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
