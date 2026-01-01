@@ -1,117 +1,175 @@
-# sshc
+# SSHC - SSH Client
 
-**The SSH Client for Power Users**
+A feature-rich SSH client for the terminal, built as a continuation of [SSHM](https://github.com/Gu1llaum-3/sshm).
 
-[![Go](https://img.shields.io/badge/Go-1.23+-00ADD8?style=for-the-badge&logo=go)](https://golang.org/)
-[![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey?style=for-the-badge)]()
-
-> A comprehensive terminal-based SSH client that brings the power of tools like MobaXterm to your command line.
-
-Manage dozens of servers, transfer files, monitor systems, and automate tasks - all without leaving your terminal.
-
-## Why sshc?
-
-- **All-in-one** - SSH, SFTP, port forwarding, and file transfers in a single tool
-- **Keyboard-driven** - Vim-style navigation, no mouse required
-- **File transfers** - Upload/download files and folders with a built-in remote browser
-- **Fast** - Written in Go, starts instantly, minimal resource usage
-- **Secure** - Works with your existing SSH config and keys
-- **Cross-platform** - Linux, macOS, and Windows support
+SSHC extends the original SSH manager with additional client capabilities including file transfers, remote browsing, and more.
 
 ## Features
 
-| Category | Features |
-|----------|----------|
-| **Sessions** | Quick connect, connection history, real-time status |
-| **Transfers** | SFTP browser, file/folder uploads, recursive downloads |
-| **Network** | Local/Remote/Dynamic port forwarding with history |
-| **Management** | Add, edit, delete, organize hosts with tags |
-| **Search** | Fast fuzzy search across all hosts |
+### Connection Management
+- Interactive TUI for browsing and connecting to SSH hosts
+- Direct CLI connection with `sshc <host>`
+- Real-time connectivity status indicators
+- Connection history with last login tracking
+- Support for custom SSH config files
+
+### File Transfer
+- Upload and download files via SCP
+- Transfer entire directories recursively
+- Native file picker integration (macOS, Linux)
+- Remote file browser for selecting transfer targets
+- Transfer history tracking
+
+### Port Forwarding
+- Local port forwarding (-L)
+- Remote port forwarding (-R)
+- Dynamic SOCKS proxy (-D)
+- Saved forwarding configurations for quick reuse
+
+### Configuration
+- Works directly with ~/.ssh/config
+- Full SSH Include directive support
+- Add, edit, move, and delete host configurations
+- Tag-based organization
+- ProxyJump support for bastion hosts
+- Any SSH option can be configured
 
 ## Installation
 
-**macOS (Homebrew):**
+### Homebrew (macOS)
 ```bash
-brew install xvertile/sshc/sshc
+brew install yourusername/tap/sshc
 ```
 
-**Linux/macOS (Script):**
+### From Source
 ```bash
-curl -sSL https://raw.githubusercontent.com/xvertile/sshc/main/install.sh | bash
+git clone https://github.com/yourusername/sshc.git
+cd sshc
+go build -o sshc .
+sudo mv sshc /usr/local/bin/
 ```
 
-**From source:**
-```bash
-go install github.com/xvertile/sshc@latest
-```
+### Binary Releases
 
-## Quick Start
+Download the latest release for your platform from the [releases page](https://github.com/yourusername/sshc/releases).
 
+| Platform | Architecture | Download |
+|----------|-------------|----------|
+| Linux | AMD64 | sshc-linux-amd64.tar.gz |
+| Linux | ARM64 | sshc-linux-arm64.tar.gz |
+| macOS | Intel | sshc-darwin-amd64.tar.gz |
+| macOS | Apple Silicon | sshc-darwin-arm64.tar.gz |
+| Windows | AMD64 | sshc-windows-amd64.zip |
+
+## Usage
+
+### Interactive Mode
+
+Launch without arguments to open the TUI:
 ```bash
-# Launch TUI
 sshc
-
-# Connect directly
-sshc my-server
-
-# File transfers
-sshc cp local.txt server:/tmp/     # Upload file
-sshc cp server:/var/log/ ./logs/   # Download folder
-sshc get server                     # Interactive download
-sshc send server                    # Interactive upload
 ```
 
-## Keybindings
+Navigation:
+- `j/k` or arrows - navigate host list
+- `Enter` - connect to selected host
+- `a` - add new host
+- `e` - edit host
+- `d` - delete host
+- `m` - move host to another config file
+- `f` - port forwarding setup
+- `t` - file transfer
+- `/` - search hosts
+- `q` - quit
 
-| Key | Action |
-|-----|--------|
-| `Enter` | Connect to host |
-| `a` | Add new host |
-| `e` | Edit host |
-| `d` | Delete host |
-| `t` | Quick file transfer |
-| `p` | Port forwarding |
-| `/` | Search hosts |
-| `?` | Help |
-| `q` | Quit |
+### Direct Connection
+```bash
+sshc production-server
+sshc db-staging -c ~/work/ssh_config
+```
 
-### File Transfer UI
+### File Transfer
+```bash
+# Interactive transfer UI
+sshc transfer myserver
 
-| Key | Action |
-|-----|--------|
-| `u/d` | Upload/Download |
-| `f/d` | File/Folder |
-| `Enter` | Confirm selection |
-| `Esc` | Go back |
+# Or press 't' in the TUI while a host is selected
+```
 
-### Remote Browser
+The transfer interface provides:
+- Choice between upload and download
+- Native file picker for local files
+- Remote browser for selecting destination/source
+- Progress indication during transfer
 
-| Key | Action |
-|-----|--------|
-| `j/k` or arrows | Navigate |
-| `Enter` | Select/Open |
-| `h` or `Backspace` | Parent directory |
-| `/` | Search |
-| `.` | Toggle hidden files |
-| `~` | Go to home |
+### Port Forwarding
+```bash
+# Interactive forwarding setup
+sshc forward myserver
+
+# Or press 'f' in the TUI
+```
+
+### Host Management
+```bash
+# Add a new host
+sshc add
+
+# Edit existing host
+sshc edit myserver
+
+# Move host to different config file
+sshc move myserver
+```
 
 ## Configuration
 
-sshc works directly with your `~/.ssh/config` file. It adds special comment tags for enhanced functionality while maintaining full SSH compatibility.
-
-```ssh
-# Tags: production, web
-Host web-prod
-    HostName 192.168.1.10
-    User deploy
-    IdentityFile ~/.ssh/prod_key
+SSHC uses your existing SSH configuration at `~/.ssh/config`. Custom config files can be specified with `-c`:
+```bash
+sshc -c /path/to/config
 ```
+
+### SSH Include Support
+
+Organize configurations across multiple files:
+```ssh
+# ~/.ssh/config
+Include ~/.ssh/conf.d/*
+Include work-servers.conf
+
+Host personal
+    HostName personal.example.com
+    User me
+```
+
+### Key Bindings
+
+Custom key bindings can be configured in `~/.config/sshc/config.json`:
+```json
+{
+  "key_bindings": {
+    "quit_keys": ["q", "ctrl+c"],
+    "disable_esc_quit": true
+  }
+}
+```
+
+### Data Storage
+
+- Config: `~/.config/sshc/`
+- Backups: `~/.config/sshc/backups/`
+- History: `~/.config/sshc/history.json`
+
+## Requirements
+
+- Go 1.23+ (for building from source)
+- OpenSSH client
+- For native file picker on Linux: zenity or kdialog
+
+## Credits
+
+SSHC is a continuation of [SSHM](https://github.com/Gu1llaum-3/sshm) by [Guillaume](https://github.com/Gu1llaum-3). The original project provided the foundation for host management and the TUI interface.
 
 ## License
 
-MIT
-
----
-
-*sshc: SSH, supercharged.*
+MIT License - see [LICENSE](LICENSE) for details.
