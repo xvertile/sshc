@@ -36,14 +36,14 @@ SSHC extends the original SSH manager with additional client capabilities includ
 
 ## Installation
 
-### Homebrew (macOS)
+### Homebrew (macOS/Linux)
 ```bash
-brew install yourusername/tap/sshc
+brew install xvertile/sshc/sshc
 ```
 
 ### From Source
 ```bash
-git clone https://github.com/yourusername/sshc.git
+git clone https://github.com/xvertile/sshc.git
 cd sshc
 go build -o sshc .
 sudo mv sshc /usr/local/bin/
@@ -51,7 +51,7 @@ sudo mv sshc /usr/local/bin/
 
 ### Binary Releases
 
-Download the latest release for your platform from the [releases page](https://github.com/yourusername/sshc/releases).
+Download the latest release for your platform from the [releases page](https://github.com/xvertile/sshc/releases).
 
 | Platform | Architecture | Download |
 |----------|-------------|----------|
