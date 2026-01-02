@@ -63,6 +63,10 @@ func (m Model) View() string {
 		if m.k8sEditForm != nil {
 			return m.k8sEditForm.View()
 		}
+	case ViewTheme:
+		if m.themePicker != nil {
+			return m.themePicker.View()
+		}
 	case ViewList:
 		return m.renderListView()
 	}
@@ -80,7 +84,7 @@ func (m Model) renderListView() string {
 
 	// Add update notification if available (between title and search)
 	if m.updateInfo != nil && m.updateInfo.Available {
-		updateText := fmt.Sprintf("🚀 Update available: %s → %s",
+		updateText := fmt.Sprintf("Update available: %s -> %s",
 			m.updateInfo.CurrentVer,
 			m.updateInfo.LatestVer)
 
@@ -103,7 +107,7 @@ func (m Model) renderListView() string {
 			BorderForeground(lipgloss.Color("9")).
 			Align(lipgloss.Center)
 
-		components = append(components, errorStyle.Render("❌ "+m.errorMessage))
+		components = append(components, errorStyle.Render("[!] "+m.errorMessage))
 	}
 
 	// Add the search bar with the appropriate style based on focus
@@ -126,7 +130,7 @@ func (m Model) renderListView() string {
 	// Add the help text
 	var helpText string
 	if !m.searchMode {
-		helpText = " ↑/↓: navigate • Enter: connect • a: add SSH • K: add K8s • h: help • q: quit"
+		helpText = " ↑/↓: navigate • Enter: connect • a: add SSH • K: add K8s • c: themes • h: help • q: quit"
 	} else {
 		helpText = " Type to filter • Enter: validate • Tab: switch • ESC: quit"
 	}
@@ -222,7 +226,7 @@ func (m Model) renderUpdateNotification() string {
 	}
 
 	// Create the notification message
-	message := fmt.Sprintf("🚀 Update available: %s → %s",
+	message := fmt.Sprintf("Update available: %s -> %s",
 		m.updateInfo.CurrentVer,
 		m.updateInfo.LatestVer)
 

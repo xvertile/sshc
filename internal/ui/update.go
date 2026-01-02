@@ -545,6 +545,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.table.Focus()
 		return m, nil
 
+	case themePickerSubmitMsg:
+		// Theme selected: save to config and update styles
+		if m.appConfig != nil {
+			m.appConfig.Theme = msg.themeName
+			_ = config.SaveAppConfig(m.appConfig)
+		}
+		SetThemeByName(msg.themeName)
+		m.styles = NewStyles(m.width)
+		m.updateTableStyles()
+		m.viewMode = ViewList
+		m.themePicker = nil
+		m.table.Focus()
+		return m, nil
+
+	case themePickerCancelMsg:
+		// Cancel: restore original theme and return to list view
+		if m.appConfig != nil {
+			SetThemeByName(m.appConfig.Theme)
+		}
+		m.styles = NewStyles(m.width)
+		m.updateTableStyles()
+		m.viewMode = ViewList
+		m.themePicker = nil
+		m.table.Focus()
+		return m, nil
+
 	case tea.KeyMsg:
 		// Handle view-specific key presses
 		switch m.viewMode {
@@ -630,6 +656,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				var newForm *k8sEditFormModel
 				newForm, cmd = m.k8sEditForm.Update(msg)
 				m.k8sEditForm = newForm
+				return m, cmd
+			}
+		case ViewTheme:
+			if m.themePicker != nil {
+				var newPicker *themePickerModel
+				newPicker, cmd = m.themePicker.Update(msg)
+				m.themePicker = newPicker
+				// Update styles after theme picker changes
+				m.styles = NewStyles(m.width)
 				return m, cmd
 			}
 		case ViewList:
@@ -1000,6 +1035,13 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Show help
 			m.helpForm = NewHelpForm(m.styles, m.width, m.height)
 			m.viewMode = ViewHelp
+			return m, nil
+		}
+	case "c":
+		if !m.searchMode && !m.deleteMode {
+			// Open theme picker (c for colors)
+			m.themePicker = NewThemePicker(m.styles, m.width, m.height, m.appConfig)
+			m.viewMode = ViewTheme
 			return m, nil
 		}
 	case "s":

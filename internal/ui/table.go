@@ -131,7 +131,7 @@ func (m *Model) updateTableRows() {
 			// Get status indicator
 			var statusIndicator string
 			if entry.IsK8s {
-				statusIndicator = "☸" // Kubernetes wheel symbol
+				statusIndicator = "k" // Kubernetes indicator
 			} else {
 				statusIndicator = m.getPingStatusIndicator(entry.Name)
 			}

@@ -40,7 +40,7 @@ func (m *helpModel) Update(msg tea.Msg) (*helpModel, tea.Cmd) {
 
 func (m *helpModel) View() string {
 	// Title
-	title := m.styles.Header.Render("📖 SSHM - Commands")
+	title := m.styles.Header.Render("SSHC - Commands")
 
 	// Create two columns of commands for better visual organization
 	leftColumn := lipgloss.JoinVertical(lipgloss.Left,
@@ -99,6 +99,12 @@ func (m *helpModel) View() string {
 		"",
 		m.styles.FocusedLabel.Render("System"),
 		"",
+		lipgloss.JoinHorizontal(lipgloss.Left,
+			m.styles.FocusedLabel.Render("c  "),
+			m.styles.HelpText.Render("change theme/colors")),
+		lipgloss.JoinHorizontal(lipgloss.Left,
+			m.styles.FocusedLabel.Render("K  "),
+			m.styles.HelpText.Render("add kubernetes host")),
 		lipgloss.JoinHorizontal(lipgloss.Left,
 			m.styles.FocusedLabel.Render("h  "),
 			m.styles.HelpText.Render("show this help")),

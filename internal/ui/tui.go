@@ -26,6 +26,11 @@ func NewModel(hosts []config.SSHHost, configFile, currentVersion string) Model {
 		appConfig = &defaultConfig
 	}
 
+	// Apply saved theme
+	if appConfig.Theme != "" {
+		SetThemeByName(appConfig.Theme)
+	}
+
 	// Initialize the history manager
 	historyManager, err := history.NewHistoryManager()
 	if err != nil {
@@ -124,10 +129,10 @@ func NewModel(hosts []config.SSHHost, configFile, currentVersion string) Model {
 	// Convert entries to table rows
 	var rows []table.Row
 	for _, entry := range allEntries {
-		// Get ping status indicator (only for SSH hosts)
+		// Get status indicator (only for SSH hosts)
 		var statusIndicator string
 		if entry.IsK8s {
-			statusIndicator = "☸" // Kubernetes wheel symbol
+			statusIndicator = "k" // Kubernetes indicator
 		} else {
 			statusIndicator = m.getPingStatusIndicator(entry.Name)
 		}

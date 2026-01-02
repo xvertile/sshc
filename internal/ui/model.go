@@ -47,6 +47,7 @@ const (
 	ViewFileSelector
 	ViewK8sAdd
 	ViewK8sEdit
+	ViewTheme
 )
 
 // PortForwardType defines the type of port forwarding
@@ -125,6 +126,7 @@ type Model struct {
 	fileSelectorForm  *fileSelectorModel
 	k8sAddForm        *k8sAddFormModel
 	k8sEditForm       *k8sEditFormModel
+	themePicker       *themePickerModel
 
 	// Terminal size and styles
 	width  int

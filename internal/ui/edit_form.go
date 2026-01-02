@@ -392,7 +392,7 @@ func (m *editFormModel) renderHeightWarning() string {
 	required := m.getMinimumHeight()
 	current := m.height
 
-	warning := m.styles.ErrorText.Render("⚠️  Terminal height is too small!")
+	warning := m.styles.ErrorText.Render("[!] Terminal height is too small!")
 	details := m.styles.FormField.Render(fmt.Sprintf("Current: %d lines, Required: %d lines", current, required))
 	instruction := m.styles.FormHelp.Render("Please resize your terminal window and try again.")
 	instruction2 := m.styles.FormHelp.Render("Press Ctrl+C to cancel or resize terminal window.")

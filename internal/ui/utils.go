@@ -72,33 +72,33 @@ func formatConfigFile(filePath string) string {
 	return filePath
 }
 
-// getPingStatusIndicator returns a colored circle indicator based on ping status
+// getPingStatusIndicator returns a status indicator based on ping status
 func (m *Model) getPingStatusIndicator(hostName string) string {
 	if m.pingManager == nil {
-		return "⚫" // Gray circle for unknown
+		return "○" // Empty circle for unknown
 	}
 
 	status := m.pingManager.GetStatus(hostName)
 	switch status {
 	case connectivity.StatusOnline:
-		return "🟢" // Green circle for online
+		return "●" // Filled circle for online
 	case connectivity.StatusOffline:
-		return "🔴" // Red circle for offline
+		return "×" // X for offline
 	case connectivity.StatusConnecting:
-		return "🟡" // Yellow circle for connecting
+		return "◌" // Dotted circle for connecting
 	default:
-		return "⚫" // Gray circle for unknown
+		return "○" // Empty circle for unknown
 	}
 }
 
 // extractHostNameFromTableRow extracts the host name from the first column,
-// removing the ping status indicator
+// removing the status indicator
 func extractHostNameFromTableRow(firstColumn string) string {
-	// The first column format is: "🟢 hostname" or "⚫ hostname" or "☸ hostname" etc.
-	// We need to remove the emoji and space to get just the hostname
+	// The first column format is: "● hostname" or "○ hostname" or "k hostname" etc.
+	// We need to remove the indicator and space to get just the hostname
 	parts := strings.Fields(firstColumn)
 	if len(parts) >= 2 {
-		// Return everything after the first part (the emoji)
+		// Return everything after the first part (the indicator)
 		return strings.Join(parts[1:], " ")
 	}
 	// Fallback: if there's no space, return the whole string
@@ -107,8 +107,8 @@ func extractHostNameFromTableRow(firstColumn string) string {
 
 // isK8sHostFromTableRow checks if the selected row is a k8s host based on the icon
 func isK8sHostFromTableRow(firstColumn string) bool {
-	// K8s hosts have the ☸ (kubernetes wheel) symbol prefix
-	return strings.HasPrefix(firstColumn, "☸")
+	// K8s hosts have the "k" prefix
+	return strings.HasPrefix(firstColumn, "k ")
 }
 
 // getHostEntryByName finds a host entry by name from the filtered entries

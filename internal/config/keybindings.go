@@ -19,6 +19,7 @@ type KeyBindings struct {
 // AppConfig represents the main application configuration
 type AppConfig struct {
 	KeyBindings KeyBindings `json:"key_bindings"`
+	Theme       string      `json:"theme"`
 }
 
 // GetDefaultKeyBindings returns the default key bindings configuration
@@ -33,6 +34,7 @@ func GetDefaultKeyBindings() KeyBindings {
 func GetDefaultAppConfig() AppConfig {
 	return AppConfig{
 		KeyBindings: GetDefaultKeyBindings(),
+		Theme:       "Default",
 	}
 }
 
@@ -123,6 +125,11 @@ func mergeWithDefaults(config AppConfig) AppConfig {
 	// If QuitKeys is empty, use defaults
 	if len(config.KeyBindings.QuitKeys) == 0 {
 		config.KeyBindings.QuitKeys = defaults.KeyBindings.QuitKeys
+	}
+
+	// If Theme is empty, use default
+	if config.Theme == "" {
+		config.Theme = defaults.Theme
 	}
 
 	return config
