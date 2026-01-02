@@ -5,8 +5,24 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xvertile/sshc/internal/config"
 	"github.com/xvertile/sshc/internal/connectivity"
 )
+
+// saveSortMode persists the current sort mode to config
+func (m *Model) saveSortMode() {
+	if m.appConfig == nil {
+		return
+	}
+
+	sortModeStr := "name"
+	if m.sortMode == SortByLastUsed {
+		sortModeStr = "recent"
+	}
+
+	m.appConfig.SortMode = sortModeStr
+	config.SaveAppConfig(m.appConfig)
+}
 
 // formatTimeAgo formats a time into a readable "X time ago" string
 func formatTimeAgo(t time.Time) string {

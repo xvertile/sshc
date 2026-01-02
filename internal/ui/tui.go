@@ -56,13 +56,19 @@ func NewModel(hosts []config.SSHHost, configFile, currentVersion string) Model {
 	// Initialize ping manager with 5 second timeout
 	pingManager := connectivity.NewPingManager(5 * time.Second)
 
-	// Create the model with default sorting by name
+	// Determine sort mode from config
+	sortMode := SortByName
+	if appConfig != nil && appConfig.SortMode == "recent" {
+		sortMode = SortByLastUsed
+	}
+
+	// Create the model with sorting from config
 	m := Model{
 		hosts:          hosts,
 		k8sHosts:       k8sHosts,
 		historyManager: historyManager,
 		pingManager:    pingManager,
-		sortMode:       SortByName,
+		sortMode:       sortMode,
 		configFile:     configFile,
 		currentVersion: currentVersion,
 		appConfig:      appConfig,

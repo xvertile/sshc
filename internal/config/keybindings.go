@@ -20,6 +20,7 @@ type KeyBindings struct {
 type AppConfig struct {
 	KeyBindings KeyBindings `json:"key_bindings"`
 	Theme       string      `json:"theme"`
+	SortMode    string      `json:"sort_mode"` // "name" or "recent"
 }
 
 // GetDefaultKeyBindings returns the default key bindings configuration
@@ -35,6 +36,7 @@ func GetDefaultAppConfig() AppConfig {
 	return AppConfig{
 		KeyBindings: GetDefaultKeyBindings(),
 		Theme:       "Default",
+		SortMode:    "name",
 	}
 }
 
@@ -130,6 +132,11 @@ func mergeWithDefaults(config AppConfig) AppConfig {
 	// If Theme is empty, use default
 	if config.Theme == "" {
 		config.Theme = defaults.Theme
+	}
+
+	// If SortMode is empty or invalid, use default
+	if config.SortMode != "name" && config.SortMode != "recent" {
+		config.SortMode = defaults.SortMode
 	}
 
 	return config

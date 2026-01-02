@@ -1056,6 +1056,7 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !m.searchMode && !m.deleteMode {
 			// Cycle through sort modes (only 2 modes now)
 			m.sortMode = (m.sortMode + 1) % 2
+			m.saveSortMode()
 			// Re-apply the current filter/sort with the new sort mode
 			if m.searchInput.Value() != "" {
 				m.filteredEntries = m.sortEntries(m.filterEntries(m.searchInput.Value()))
@@ -1069,6 +1070,7 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !m.searchMode && !m.deleteMode {
 			// Switch to sort by recent (last used)
 			m.sortMode = SortByLastUsed
+			m.saveSortMode()
 			// Re-apply the current filter/sort with the new sort mode
 			if m.searchInput.Value() != "" {
 				m.filteredEntries = m.sortEntries(m.filterEntries(m.searchInput.Value()))
@@ -1082,6 +1084,7 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !m.searchMode && !m.deleteMode {
 			// Switch to sort by name
 			m.sortMode = SortByName
+			m.saveSortMode()
 			// Re-apply the current filter/sort with the new sort mode
 			if m.searchInput.Value() != "" {
 				m.filteredEntries = m.sortEntries(m.filterEntries(m.searchInput.Value()))
