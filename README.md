@@ -36,9 +36,20 @@ SSHC extends the original SSH manager with additional client capabilities includ
 
 ## Installation
 
+### Quick Install (Recommended)
+```bash
+curl -fsSL https://raw.githubusercontent.com/xvertile/sshc/main/install/install.sh | bash
+```
+
 ### Homebrew (macOS/Linux)
 ```bash
-brew install xvertile/sshc/sshc
+brew tap xvertile/sshc
+brew install sshc
+```
+
+To upgrade:
+```bash
+brew update && brew upgrade sshc
 ```
 
 ### From Source
@@ -52,14 +63,6 @@ sudo mv sshc /usr/local/bin/
 ### Binary Releases
 
 Download the latest release for your platform from the [releases page](https://github.com/xvertile/sshc/releases).
-
-| Platform | Architecture | Download |
-|----------|-------------|----------|
-| Linux | AMD64 | sshc-linux-amd64.tar.gz |
-| Linux | ARM64 | sshc-linux-arm64.tar.gz |
-| macOS | Intel | sshc-darwin-amd64.tar.gz |
-| macOS | Apple Silicon | sshc-darwin-arm64.tar.gz |
-| Windows | AMD64 | sshc-windows-amd64.zip |
 
 ## Usage
 
