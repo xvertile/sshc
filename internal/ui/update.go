@@ -485,6 +485,66 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.table.Focus()
 		return m, nil
 
+	case k8sAddFormSubmitMsg:
+		if msg.err != nil {
+			// Show error in form
+			if m.k8sAddForm != nil {
+				m.k8sAddForm.err = msg.err.Error()
+			}
+			return m, nil
+		} else {
+			// Success: refresh k8s hosts and return to list view
+			k8sHosts, err := config.ParseK8sConfig()
+			if err != nil {
+				return m, tea.Quit
+			}
+			m.k8sHosts = k8sHosts
+			m.filteredK8sHosts = k8sHosts
+			m.rebuildEntries()
+			m.updateTableRows()
+			m.viewMode = ViewList
+			m.k8sAddForm = nil
+			m.table.Focus()
+			return m, nil
+		}
+
+	case k8sAddFormCancelMsg:
+		// Cancel: return to list view
+		m.viewMode = ViewList
+		m.k8sAddForm = nil
+		m.table.Focus()
+		return m, nil
+
+	case k8sEditFormSubmitMsg:
+		if msg.err != nil {
+			// Show error in form
+			if m.k8sEditForm != nil {
+				m.k8sEditForm.err = msg.err.Error()
+			}
+			return m, nil
+		} else {
+			// Success: refresh k8s hosts and return to list view
+			k8sHosts, err := config.ParseK8sConfig()
+			if err != nil {
+				return m, tea.Quit
+			}
+			m.k8sHosts = k8sHosts
+			m.filteredK8sHosts = k8sHosts
+			m.rebuildEntries()
+			m.updateTableRows()
+			m.viewMode = ViewList
+			m.k8sEditForm = nil
+			m.table.Focus()
+			return m, nil
+		}
+
+	case k8sEditFormCancelMsg:
+		// Cancel: return to list view
+		m.viewMode = ViewList
+		m.k8sEditForm = nil
+		m.table.Focus()
+		return m, nil
+
 	case tea.KeyMsg:
 		// Handle view-specific key presses
 		switch m.viewMode {
@@ -556,6 +616,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				var newForm *fileSelectorModel
 				newForm, cmd = m.fileSelectorForm.Update(msg)
 				m.fileSelectorForm = newForm
+				return m, cmd
+			}
+		case ViewK8sAdd:
+			if m.k8sAddForm != nil {
+				var newForm *k8sAddFormModel
+				newForm, cmd = m.k8sAddForm.Update(msg)
+				m.k8sAddForm = newForm
+				return m, cmd
+			}
+		case ViewK8sEdit:
+			if m.k8sEditForm != nil {
+				var newForm *k8sEditFormModel
+				newForm, cmd = m.k8sEditForm.Update(msg)
+				m.k8sEditForm = newForm
 				return m, cmd
 			}
 		case ViewList:
@@ -630,77 +704,97 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.table.Focus()
 			return m, nil
 		} else if m.deleteMode {
-			// Confirm deletion
+			// Confirm deletion - handle both SSH and K8s hosts
 			var err error
-			if m.configFile != "" {
-				err = config.DeleteSSHHostFromFile(m.deleteHost, m.configFile)
+			if m.deleteHostIsK8s {
+				// Delete K8s host
+				err = config.DeleteK8sHost(m.deleteHost)
+				if err == nil {
+					// Refresh k8s hosts
+					k8sHosts, parseErr := config.ParseK8sConfig()
+					if parseErr == nil {
+						m.k8sHosts = k8sHosts
+						m.filteredK8sHosts = k8sHosts
+					}
+				}
 			} else {
-				err = config.DeleteSSHHost(m.deleteHost)
+				// Delete SSH host
+				if m.configFile != "" {
+					err = config.DeleteSSHHostFromFile(m.deleteHost, m.configFile)
+				} else {
+					err = config.DeleteSSHHost(m.deleteHost)
+				}
+				if err == nil {
+					// Refresh SSH hosts
+					var hosts []config.SSHHost
+					if m.configFile != "" {
+						hosts, _ = config.ParseSSHConfigFile(m.configFile)
+					} else {
+						hosts, _ = config.ParseSSHConfig()
+					}
+					m.hosts = m.sortHosts(hosts)
+					if m.searchInput.Value() != "" {
+						m.filteredHosts = m.filterHosts(m.searchInput.Value())
+					} else {
+						m.filteredHosts = m.hosts
+					}
+				}
 			}
 			if err != nil {
 				// Could display an error message here
 				m.deleteMode = false
 				m.deleteHost = ""
+				m.deleteHostIsK8s = false
 				m.table.Focus()
 				return m, nil
 			}
-			// Refresh the hosts list
-			var hosts []config.SSHHost
-			var parseErr error
 
-			if m.configFile != "" {
-				hosts, parseErr = config.ParseSSHConfigFile(m.configFile)
-			} else {
-				hosts, parseErr = config.ParseSSHConfig()
-			}
-
-			if parseErr != nil {
-				// Could display an error message here
-				m.deleteMode = false
-				m.deleteHost = ""
-				m.table.Focus()
-				return m, nil
-			}
-			m.hosts = m.sortHosts(hosts)
-
-			// Reapply search filter if there is one active
-			if m.searchInput.Value() != "" {
-				m.filteredHosts = m.filterHosts(m.searchInput.Value())
-			} else {
-				m.filteredHosts = m.hosts
-			}
-
+			// Rebuild unified entries and update table
+			m.rebuildEntries()
 			m.updateTableRows()
 			m.deleteMode = false
 			m.deleteHost = ""
+			m.deleteHostIsK8s = false
 			m.table.Focus()
 			return m, nil
 		} else {
 			// Connect to the selected host
 			selected := m.table.SelectedRow()
 			if len(selected) > 0 {
-				hostName := extractHostNameFromTableRow(selected[0]) // Extract hostname from first column
+				hostName := extractHostNameFromTableRow(selected[0])
+				isK8s := isK8sHostFromTableRow(selected[0])
 
 				// Record the connection in history
 				if m.historyManager != nil {
 					err := m.historyManager.RecordConnection(hostName)
 					if err != nil {
-						// Log the error but don't prevent the connection
 						fmt.Printf("Warning: Could not record connection history: %v\n", err)
 					}
 				}
 
-				// Build the SSH command with the appropriate config file
-				var sshCmd *exec.Cmd
-				if m.configFile != "" {
-					sshCmd = exec.Command("ssh", "-F", m.configFile, hostName)
+				if isK8s {
+					// Get k8s host and build kubectl exec command
+					k8sHost, err := config.GetK8sHost(hostName)
+					if err != nil {
+						fmt.Printf("Error: Could not find k8s host: %v\n", err)
+						return m, nil
+					}
+					kubectlCmd := k8sHost.BuildKubectlCommand()
+					return m, tea.ExecProcess(kubectlCmd, func(err error) tea.Msg {
+						return tea.Quit()
+					})
 				} else {
-					sshCmd = exec.Command("ssh", hostName)
+					// Build the SSH command with the appropriate config file
+					var sshCmd *exec.Cmd
+					if m.configFile != "" {
+						sshCmd = exec.Command("ssh", "-F", m.configFile, hostName)
+					} else {
+						sshCmd = exec.Command("ssh", hostName)
+					}
+					return m, tea.ExecProcess(sshCmd, func(err error) tea.Msg {
+						return tea.Quit()
+					})
 				}
-
-				return m, tea.ExecProcess(sshCmd, func(err error) tea.Msg {
-					return tea.Quit()
-				})
 			}
 		}
 	case "e":
@@ -708,14 +802,26 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Edit the selected host
 			selected := m.table.SelectedRow()
 			if len(selected) > 0 {
-				hostName := extractHostNameFromTableRow(selected[0]) // Extract hostname from first column
-				editForm, err := NewEditForm(hostName, m.styles, m.width, m.height, m.configFile)
-				if err != nil {
-					// Handle error - could show in UI
-					return m, nil
+				hostName := extractHostNameFromTableRow(selected[0])
+				isK8s := isK8sHostFromTableRow(selected[0])
+
+				if isK8s {
+					// Edit k8s host
+					k8sEditForm, err := NewK8sEditForm(hostName, m.styles, m.width, m.height)
+					if err != nil {
+						return m, nil
+					}
+					m.k8sEditForm = k8sEditForm
+					m.viewMode = ViewK8sEdit
+				} else {
+					// Edit SSH host
+					editForm, err := NewEditForm(hostName, m.styles, m.width, m.height, m.configFile)
+					if err != nil {
+						return m, nil
+					}
+					m.editForm = editForm
+					m.viewMode = ViewEdit
 				}
-				m.editForm = editForm
-				m.viewMode = ViewEdit
 				return m, textinput.Blink
 			}
 		}
@@ -724,7 +830,16 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Move the selected host to another config file
 			selected := m.table.SelectedRow()
 			if len(selected) > 0 {
-				hostName := extractHostNameFromTableRow(selected[0]) // Extract hostname from first column
+				// Check if it's a k8s host
+				if isK8sHostFromTableRow(selected[0]) {
+					m.errorMessage = "Move is not supported for Kubernetes hosts"
+					m.showingError = true
+					return m, func() tea.Msg {
+						time.Sleep(2 * time.Second)
+						return errorMsg("clear")
+					}
+				}
+				hostName := extractHostNameFromTableRow(selected[0])
 				moveForm, err := NewMoveForm(hostName, m.styles, m.width, m.height, m.configFile)
 				if err != nil {
 					// Show error message to user
@@ -745,7 +860,27 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Show info for the selected host
 			selected := m.table.SelectedRow()
 			if len(selected) > 0 {
-				hostName := extractHostNameFromTableRow(selected[0]) // Extract hostname from first column
+				// Check if it's a k8s host - show basic info in error message for now
+				if isK8sHostFromTableRow(selected[0]) {
+					hostName := extractHostNameFromTableRow(selected[0])
+					k8sHost, err := config.GetK8sHost(hostName)
+					if err != nil {
+						return m, nil
+					}
+					info := fmt.Sprintf("K8s: %s | NS: %s | Pod: %s | Context: %s",
+						k8sHost.Name, k8sHost.Namespace, k8sHost.Pod, k8sHost.Context)
+					if k8sHost.Context == "" {
+						info = fmt.Sprintf("K8s: %s | NS: %s | Pod: %s",
+							k8sHost.Name, k8sHost.Namespace, k8sHost.Pod)
+					}
+					m.errorMessage = info
+					m.showingError = true
+					return m, func() tea.Msg {
+						time.Sleep(4 * time.Second)
+						return errorMsg("clear")
+					}
+				}
+				hostName := extractHostNameFromTableRow(selected[0])
 				infoForm, err := NewInfoForm(hostName, m.styles, m.width, m.height, m.configFile)
 				if err != nil {
 					// Handle error - could show in UI
@@ -799,12 +934,21 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Delete the selected host
 			selected := m.table.SelectedRow()
 			if len(selected) > 0 {
-				hostName := extractHostNameFromTableRow(selected[0]) // Extract hostname from first column
+				hostName := extractHostNameFromTableRow(selected[0])
+				isK8s := isK8sHostFromTableRow(selected[0])
 				m.deleteMode = true
 				m.deleteHost = hostName
+				m.deleteHostIsK8s = isK8s
 				m.table.Blur()
 				return m, nil
 			}
+		}
+	case "K":
+		if !m.searchMode && !m.deleteMode {
+			// Add new k8s host
+			m.k8sAddForm = NewK8sAddForm(m.styles, m.width, m.height)
+			m.viewMode = ViewK8sAdd
+			return m, textinput.Blink
 		}
 	case "p":
 		if !m.searchMode && !m.deleteMode {
@@ -816,7 +960,16 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Port forwarding for the selected host
 			selected := m.table.SelectedRow()
 			if len(selected) > 0 {
-				hostName := extractHostNameFromTableRow(selected[0]) // Extract hostname from first column
+				// Check if it's a k8s host
+				if isK8sHostFromTableRow(selected[0]) {
+					m.errorMessage = "Port forwarding is not supported for Kubernetes hosts"
+					m.showingError = true
+					return m, func() tea.Msg {
+						time.Sleep(2 * time.Second)
+						return errorMsg("clear")
+					}
+				}
+				hostName := extractHostNameFromTableRow(selected[0])
 				m.portForwardForm = NewPortForwardForm(hostName, m.styles, m.width, m.height, m.configFile, m.historyManager)
 				m.viewMode = ViewPortForward
 				return m, textinput.Blink
@@ -827,6 +980,15 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Quick file transfer for the selected host
 			selected := m.table.SelectedRow()
 			if len(selected) > 0 {
+				// Check if it's a k8s host
+				if isK8sHostFromTableRow(selected[0]) {
+					m.errorMessage = "File transfer is not supported for Kubernetes hosts"
+					m.showingError = true
+					return m, func() tea.Msg {
+						time.Sleep(2 * time.Second)
+						return errorMsg("clear")
+					}
+				}
 				hostName := extractHostNameFromTableRow(selected[0])
 				m.quickTransferForm = NewQuickTransfer(hostName, m.styles, m.width, m.height, m.configFile)
 				m.viewMode = ViewQuickTransfer

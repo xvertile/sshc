@@ -55,6 +55,14 @@ func (m Model) View() string {
 		if m.fileSelectorForm != nil {
 			return m.fileSelectorForm.View()
 		}
+	case ViewK8sAdd:
+		if m.k8sAddForm != nil {
+			return m.k8sAddForm.View()
+		}
+	case ViewK8sEdit:
+		if m.k8sEditForm != nil {
+			return m.k8sEditForm.View()
+		}
 	case ViewList:
 		return m.renderListView()
 	}
@@ -118,7 +126,7 @@ func (m Model) renderListView() string {
 	// Add the help text
 	var helpText string
 	if !m.searchMode {
-		helpText = " ↑/↓: navigate • Enter: connect • p: ping all • i: info • h: help • q: quit"
+		helpText = " ↑/↓: navigate • Enter: connect • a: add SSH • K: add K8s • h: help • q: quit"
 	} else {
 		helpText = " Type to filter • Enter: validate • Tab: switch • ESC: quit"
 	}
@@ -155,7 +163,12 @@ func (m Model) renderListView() string {
 // renderDeleteConfirmation renders a clean delete confirmation dialog
 func (m Model) renderDeleteConfirmation() string {
 	// Remove emojis (uncertain width depending on terminal) to stabilize the frame
-	title := "DELETE SSH HOST"
+	var title string
+	if m.deleteHostIsK8s {
+		title = "DELETE K8S HOST"
+	} else {
+		title = "DELETE SSH HOST"
+	}
 	question := fmt.Sprintf("Are you sure you want to delete host '%s'?", m.deleteHost)
 	action := "This action cannot be undone."
 	help := "Enter: confirm • Esc: cancel"

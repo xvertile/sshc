@@ -34,6 +34,17 @@ func NewModel(hosts []config.SSHHost, configFile, currentVersion string) Model {
 		historyManager = nil
 	}
 
+	// Load k8s hosts if config exists (feature is off by default)
+	var k8sHosts []config.K8sHost
+	if config.K8sConfigExists() {
+		k8sHosts, err = config.ParseK8sConfig()
+		if err != nil {
+			// Log the error but continue without k8s hosts
+			fmt.Printf("Warning: Could not load k8s config: %v\n", err)
+			k8sHosts = []config.K8sHost{}
+		}
+	}
+
 	// Create initial styles (will be updated on first WindowSizeMsg)
 	styles := NewStyles(80) // Default width
 
@@ -43,6 +54,7 @@ func NewModel(hosts []config.SSHHost, configFile, currentVersion string) Model {
 	// Create the model with default sorting by name
 	m := Model{
 		hosts:          hosts,
+		k8sHosts:       k8sHosts,
 		historyManager: historyManager,
 		pingManager:    pingManager,
 		sortMode:       SortByName,
@@ -78,18 +90,54 @@ func NewModel(hosts []config.SSHHost, configFile, currentVersion string) Model {
 		{Title: "Last Login", Width: lastLoginWidth},
 	}
 
-	// Convert hosts to table rows
+	// Build unified entries for SSH and K8s hosts
+	var allEntries []HostEntry
+
+	// Add SSH hosts as entries
+	for i := range sortedHosts {
+		host := &sortedHosts[i]
+		allEntries = append(allEntries, HostEntry{
+			Name:     host.Name,
+			IsK8s:    false,
+			SSHHost:  host,
+			Tags:     host.Tags,
+			Hostname: host.Hostname,
+		})
+	}
+
+	// Add K8s hosts as entries
+	for i := range k8sHosts {
+		host := &k8sHosts[i]
+		allEntries = append(allEntries, HostEntry{
+			Name:     host.Name,
+			IsK8s:    true,
+			K8sHost:  host,
+			Tags:     host.Tags,
+			Hostname: fmt.Sprintf("%s/%s", host.Namespace, host.Pod),
+		})
+	}
+
+	// Store entries in model
+	m.allEntries = allEntries
+	m.filteredEntries = allEntries
+
+	// Convert entries to table rows
 	var rows []table.Row
-	for _, host := range sortedHosts {
-		// Get ping status indicator
-		statusIndicator := m.getPingStatusIndicator(host.Name)
+	for _, entry := range allEntries {
+		// Get ping status indicator (only for SSH hosts)
+		var statusIndicator string
+		if entry.IsK8s {
+			statusIndicator = "☸" // Kubernetes wheel symbol
+		} else {
+			statusIndicator = m.getPingStatusIndicator(entry.Name)
+		}
 
 		// Format tags for display
 		var tagsStr string
-		if len(host.Tags) > 0 {
+		if len(entry.Tags) > 0 {
 			// Add the # prefix to each tag and join them with spaces
 			var formattedTags []string
-			for _, tag := range host.Tags {
+			for _, tag := range entry.Tags {
 				formattedTags = append(formattedTags, "#"+tag)
 			}
 			tagsStr = strings.Join(formattedTags, " ")
@@ -98,14 +146,14 @@ func NewModel(hosts []config.SSHHost, configFile, currentVersion string) Model {
 		// Format last login information
 		var lastLoginStr string
 		if historyManager != nil {
-			if lastConnect, exists := historyManager.GetLastConnectionTime(host.Name); exists {
+			if lastConnect, exists := historyManager.GetLastConnectionTime(entry.Name); exists {
 				lastLoginStr = formatTimeAgo(lastConnect)
 			}
 		}
 
 		rows = append(rows, table.Row{
-			statusIndicator + " " + host.Name,
-			host.Hostname,
+			statusIndicator + " " + entry.Name,
+			entry.Hostname,
 			// host.User,        // Commented to save space
 			// host.Port,        // Commented to save space
 			tagsStr,
@@ -136,6 +184,7 @@ func NewModel(hosts []config.SSHHost, configFile, currentVersion string) Model {
 	m.table = t
 	m.searchInput = ti
 	m.filteredHosts = sortedHosts
+	m.filteredK8sHosts = k8sHosts
 
 	// Initialize table styles based on initial focus state
 	m.updateTableStyles()

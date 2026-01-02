@@ -45,6 +45,8 @@ const (
 	ViewRemoteBrowser
 	ViewHelp
 	ViewFileSelector
+	ViewK8sAdd
+	ViewK8sEdit
 )
 
 // PortForwardType defines the type of port forwarding
@@ -69,6 +71,16 @@ func (p PortForwardType) String() string {
 	}
 }
 
+// HostEntry represents a unified host entry that can be either SSH or K8s
+type HostEntry struct {
+	Name     string
+	IsK8s    bool
+	SSHHost  *config.SSHHost
+	K8sHost  *config.K8sHost
+	Tags     []string
+	Hostname string // For display: SSH hostname or K8s namespace/pod
+}
+
 // Model represents the state of the user interface
 type Model struct {
 	table          table.Model
@@ -78,10 +90,19 @@ type Model struct {
 	searchMode     bool
 	deleteMode     bool
 	deleteHost     string
+	deleteHostIsK8s bool // Track if delete target is a k8s host
 	historyManager *history.HistoryManager
 	pingManager    *connectivity.PingManager
 	sortMode       SortMode
 	configFile     string // Path to the SSH config file
+
+	// Kubernetes hosts
+	k8sHosts         []config.K8sHost
+	filteredK8sHosts []config.K8sHost
+
+	// Unified host entries for display
+	allEntries      []HostEntry
+	filteredEntries []HostEntry
 
 	// Application configuration
 	appConfig      *config.AppConfig
@@ -102,6 +123,8 @@ type Model struct {
 	remoteBrowserForm *remoteBrowserModel
 	helpForm          *helpModel
 	fileSelectorForm  *fileSelectorModel
+	k8sAddForm        *k8sAddFormModel
+	k8sEditForm       *k8sEditFormModel
 
 	// Terminal size and styles
 	width  int

@@ -2,9 +2,10 @@ package ui
 
 import (
 	"fmt"
-	"github.com/xvertile/sshc/internal/connectivity"
 	"strings"
 	"time"
+
+	"github.com/xvertile/sshc/internal/connectivity"
 )
 
 // formatTimeAgo formats a time into a readable "X time ago" string
@@ -93,7 +94,7 @@ func (m *Model) getPingStatusIndicator(hostName string) string {
 // extractHostNameFromTableRow extracts the host name from the first column,
 // removing the ping status indicator
 func extractHostNameFromTableRow(firstColumn string) string {
-	// The first column format is: "🟢 hostname" or "⚫ hostname" etc.
+	// The first column format is: "🟢 hostname" or "⚫ hostname" or "☸ hostname" etc.
 	// We need to remove the emoji and space to get just the hostname
 	parts := strings.Fields(firstColumn)
 	if len(parts) >= 2 {
@@ -102,4 +103,52 @@ func extractHostNameFromTableRow(firstColumn string) string {
 	}
 	// Fallback: if there's no space, return the whole string
 	return firstColumn
+}
+
+// isK8sHostFromTableRow checks if the selected row is a k8s host based on the icon
+func isK8sHostFromTableRow(firstColumn string) bool {
+	// K8s hosts have the ☸ (kubernetes wheel) symbol prefix
+	return strings.HasPrefix(firstColumn, "☸")
+}
+
+// getHostEntryByName finds a host entry by name from the filtered entries
+func (m *Model) getHostEntryByName(name string) *HostEntry {
+	for i := range m.filteredEntries {
+		if m.filteredEntries[i].Name == name {
+			return &m.filteredEntries[i]
+		}
+	}
+	return nil
+}
+
+// rebuildEntries rebuilds the unified host entries from SSH and K8s hosts
+func (m *Model) rebuildEntries() {
+	var allEntries []HostEntry
+
+	// Add SSH hosts
+	for i := range m.filteredHosts {
+		host := &m.filteredHosts[i]
+		allEntries = append(allEntries, HostEntry{
+			Name:     host.Name,
+			IsK8s:    false,
+			SSHHost:  host,
+			Tags:     host.Tags,
+			Hostname: host.Hostname,
+		})
+	}
+
+	// Add K8s hosts
+	for i := range m.filteredK8sHosts {
+		host := &m.filteredK8sHosts[i]
+		allEntries = append(allEntries, HostEntry{
+			Name:     host.Name,
+			IsK8s:    true,
+			K8sHost:  host,
+			Tags:     host.Tags,
+			Hostname: fmt.Sprintf("%s/%s", host.Namespace, host.Pod),
+		})
+	}
+
+	m.allEntries = allEntries
+	m.filteredEntries = allEntries
 }

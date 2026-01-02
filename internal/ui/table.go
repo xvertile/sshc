@@ -121,45 +121,79 @@ func (m *Model) calculateDynamicColumnWidths(hosts []config.SSHHost) (int, int, 
 	return nameWidth, hostnameWidth, tagsWidth, lastLoginWidth
 }
 
-// updateTableRows updates the table with filtered hosts
+// updateTableRows updates the table with filtered hosts (SSH and K8s)
 func (m *Model) updateTableRows() {
 	var rows []table.Row
-	hostsToShow := m.filteredHosts
-	if hostsToShow == nil {
-		hostsToShow = m.hosts
-	}
 
-	for _, host := range hostsToShow {
-		// Get ping status indicator
-		statusIndicator := m.getPingStatusIndicator(host.Name)
-
-		// Format tags for display
-		var tagsStr string
-		if len(host.Tags) > 0 {
-			// Add the # prefix to each tag and join them with spaces
-			var formattedTags []string
-			for _, tag := range host.Tags {
-				formattedTags = append(formattedTags, "#"+tag)
+	// Use unified entries if available, otherwise fall back to SSH hosts
+	if len(m.filteredEntries) > 0 {
+		for _, entry := range m.filteredEntries {
+			// Get status indicator
+			var statusIndicator string
+			if entry.IsK8s {
+				statusIndicator = "☸" // Kubernetes wheel symbol
+			} else {
+				statusIndicator = m.getPingStatusIndicator(entry.Name)
 			}
-			tagsStr = strings.Join(formattedTags, " ")
+
+			// Format tags for display
+			var tagsStr string
+			if len(entry.Tags) > 0 {
+				var formattedTags []string
+				for _, tag := range entry.Tags {
+					formattedTags = append(formattedTags, "#"+tag)
+				}
+				tagsStr = strings.Join(formattedTags, " ")
+			}
+
+			// Format last login information
+			var lastLoginStr string
+			if m.historyManager != nil {
+				if lastConnect, exists := m.historyManager.GetLastConnectionTime(entry.Name); exists {
+					lastLoginStr = formatTimeAgo(lastConnect)
+				}
+			}
+
+			rows = append(rows, table.Row{
+				statusIndicator + " " + entry.Name,
+				entry.Hostname,
+				tagsStr,
+				lastLoginStr,
+			})
+		}
+	} else {
+		// Fallback to SSH hosts only
+		hostsToShow := m.filteredHosts
+		if hostsToShow == nil {
+			hostsToShow = m.hosts
 		}
 
-		// Format last login information
-		var lastLoginStr string
-		if m.historyManager != nil {
-			if lastConnect, exists := m.historyManager.GetLastConnectionTime(host.Name); exists {
-				lastLoginStr = formatTimeAgo(lastConnect)
-			}
-		}
+		for _, host := range hostsToShow {
+			statusIndicator := m.getPingStatusIndicator(host.Name)
 
-		rows = append(rows, table.Row{
-			statusIndicator + " " + host.Name,
-			host.Hostname,
-			// host.User,      // Commented to save space
-			// host.Port,      // Commented to save space
-			tagsStr,
-			lastLoginStr,
-		})
+			var tagsStr string
+			if len(host.Tags) > 0 {
+				var formattedTags []string
+				for _, tag := range host.Tags {
+					formattedTags = append(formattedTags, "#"+tag)
+				}
+				tagsStr = strings.Join(formattedTags, " ")
+			}
+
+			var lastLoginStr string
+			if m.historyManager != nil {
+				if lastConnect, exists := m.historyManager.GetLastConnectionTime(host.Name); exists {
+					lastLoginStr = formatTimeAgo(lastConnect)
+				}
+			}
+
+			rows = append(rows, table.Row{
+				statusIndicator + " " + host.Name,
+				host.Hostname,
+				tagsStr,
+				lastLoginStr,
+			})
+		}
 	}
 
 	m.table.SetRows(rows)
