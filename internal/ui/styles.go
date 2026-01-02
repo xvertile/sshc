@@ -261,8 +261,7 @@ func NewStyles(width int) Styles {
 		Header: lipgloss.NewStyle().
 			Foreground(lipgloss.Color(theme.Primary)).
 			Bold(true).
-			Align(lipgloss.Center).
-			PaddingBottom(1),
+			Align(lipgloss.Center),
 
 		// Search styles
 		SearchFocused: lipgloss.NewStyle().

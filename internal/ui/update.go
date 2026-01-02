@@ -1056,11 +1056,11 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !m.searchMode && !m.deleteMode {
 			// Cycle through sort modes (only 2 modes now)
 			m.sortMode = (m.sortMode + 1) % 2
-			// Re-apply the current filter with the new sort mode
+			// Re-apply the current filter/sort with the new sort mode
 			if m.searchInput.Value() != "" {
-				m.filteredHosts = m.filterHosts(m.searchInput.Value())
+				m.filteredEntries = m.sortEntries(m.filterEntries(m.searchInput.Value()))
 			} else {
-				m.filteredHosts = m.sortHosts(m.hosts)
+				m.filteredEntries = m.sortEntries(m.allEntries)
 			}
 			m.updateTableRows()
 			return m, nil
@@ -1069,11 +1069,11 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !m.searchMode && !m.deleteMode {
 			// Switch to sort by recent (last used)
 			m.sortMode = SortByLastUsed
-			// Re-apply the current filter with the new sort mode
+			// Re-apply the current filter/sort with the new sort mode
 			if m.searchInput.Value() != "" {
-				m.filteredHosts = m.filterHosts(m.searchInput.Value())
+				m.filteredEntries = m.sortEntries(m.filterEntries(m.searchInput.Value()))
 			} else {
-				m.filteredHosts = m.sortHosts(m.hosts)
+				m.filteredEntries = m.sortEntries(m.allEntries)
 			}
 			m.updateTableRows()
 			return m, nil
@@ -1082,11 +1082,11 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !m.searchMode && !m.deleteMode {
 			// Switch to sort by name
 			m.sortMode = SortByName
-			// Re-apply the current filter with the new sort mode
+			// Re-apply the current filter/sort with the new sort mode
 			if m.searchInput.Value() != "" {
-				m.filteredHosts = m.filterHosts(m.searchInput.Value())
+				m.filteredEntries = m.sortEntries(m.filterEntries(m.searchInput.Value()))
 			} else {
-				m.filteredHosts = m.sortHosts(m.hosts)
+				m.filteredEntries = m.sortEntries(m.allEntries)
 			}
 			m.updateTableRows()
 			return m, nil
