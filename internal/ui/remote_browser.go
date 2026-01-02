@@ -531,9 +531,10 @@ func (m *remoteBrowserModel) Update(msg tea.Msg) (*remoteBrowserModel, tea.Cmd) 
 
 func (m *remoteBrowserModel) View() string {
 	var b strings.Builder
+	theme := GetCurrentTheme()
 
 	// Title
-	b.WriteString(m.styles.Header.Render(fmt.Sprintf("📂 Remote Browser: %s", m.host)))
+	b.WriteString(m.styles.Header.Render(fmt.Sprintf("Remote Browser: %s", m.host)))
 	b.WriteString("\n")
 
 	// Current path or search mode indicator
@@ -543,13 +544,13 @@ func (m *remoteBrowserModel) View() string {
 			cursor = ""
 		}
 		if len(m.searchQuery) < 3 {
-			b.WriteString(fmt.Sprintf("  🔍 Search: %s%s (type %d more)\n", m.searchQuery, cursor, 3-len(m.searchQuery)))
+			b.WriteString(fmt.Sprintf("  / Search: %s%s (type %d more)\n", m.searchQuery, cursor, 3-len(m.searchQuery)))
 		} else {
-			b.WriteString(fmt.Sprintf("  🔍 Search: %s%s\n", m.searchQuery, cursor))
+			b.WriteString(fmt.Sprintf("  / Search: %s%s\n", m.searchQuery, cursor))
 		}
 		b.WriteString("  in: " + m.currentDir + "\n")
 	} else {
-		b.WriteString(m.styles.DirStyle.Render("  "+m.currentDir) + "\n")
+		b.WriteString(fmt.Sprintf("  \x1b[38;2;%s%s\x1b[0m\n", hexToRGB(theme.Primary), m.currentDir))
 	}
 	b.WriteString("\n")
 
@@ -629,46 +630,67 @@ func (m *remoteBrowserModel) View() string {
 	return b.String()
 }
 
-// ANSI escape codes for fast rendering (avoid lipgloss.Render in hot loop)
-const (
-	ansiReset    = "\x1b[0m"
-	ansiSelected = "\x1b[38;5;229;48;2;0;173;216m" // white on cyan (matches Selected style)
-	ansiDir      = "\x1b[38;5;39m"                 // blue (matches DirStyle)
-)
+// ANSI escape codes
+const ansiReset = "\x1b[0m"
+
+// hexToRGB converts a hex color like "#FF5500" to RGB format "255;85;0m"
+func hexToRGB(hex string) string {
+	hex = strings.TrimPrefix(hex, "#")
+	if len(hex) != 6 {
+		return "255;255;255m"
+	}
+	r := hexToDec(hex[0:2])
+	g := hexToDec(hex[2:4])
+	b := hexToDec(hex[4:6])
+	return fmt.Sprintf("%d;%d;%dm", r, g, b)
+}
+
+func hexToDec(hex string) int {
+	var result int
+	fmt.Sscanf(hex, "%x", &result)
+	return result
+}
 
 func (m *remoteBrowserModel) renderFileLine(file transfer.RemoteFile, selected bool) string {
+	theme := GetCurrentTheme()
 	var icon, name string
 
 	if file.Name == ".." {
-		icon = "⬆"
-		name = ".."
+		icon = ".."
+		name = ""
 	} else if file.IsDir {
-		icon = "📁"
+		icon = "+"
 		name = file.Name + "/"
 	} else {
-		icon = "  "
+		icon = " "
 		name = file.Name
 	}
 
 	// Simple truncation
-	if len(name) > 40 {
-		name = name[:37] + "..."
+	displayName := icon + " " + name
+	if len(displayName) > 42 {
+		displayName = displayName[:39] + "..."
 	}
 
 	if selected {
-		return ansiSelected + "  " + icon + " " + name + ansiReset
+		// Use theme selection colors
+		return fmt.Sprintf("\x1b[38;2;%s\x1b[48;2;%s  %s%s",
+			hexToRGB(theme.SelectionFg), hexToRGB(theme.SelectionBg), displayName, ansiReset)
 	}
 	if file.IsDir {
-		return ansiDir + "  " + icon + " " + name + ansiReset
+		// Use theme accent for directories
+		return fmt.Sprintf("\x1b[38;2;%s  %s%s", hexToRGB(theme.Accent), displayName, ansiReset)
 	}
-	return "  " + icon + " " + name
+	// Regular files use foreground color
+	return fmt.Sprintf("\x1b[38;2;%s  %s%s", hexToRGB(theme.Foreground), displayName, ansiReset)
 }
 
 // renderSearchResultLine renders a search result showing the full path
 func (m *remoteBrowserModel) renderSearchResultLine(file transfer.RemoteFile, selected bool) string {
-	icon := "📁"
+	theme := GetCurrentTheme()
+	icon := "+"
 	if !file.IsDir {
-		icon = "  "
+		icon = " "
 	}
 
 	path := file.Path
@@ -676,13 +698,16 @@ func (m *remoteBrowserModel) renderSearchResultLine(file transfer.RemoteFile, se
 		path = "..." + path[len(path)-47:]
 	}
 
+	displayName := icon + " " + path
+
 	if selected {
-		return ansiSelected + "  " + icon + " " + path + ansiReset
+		return fmt.Sprintf("\x1b[38;2;%s\x1b[48;2;%s  %s%s",
+			hexToRGB(theme.SelectionFg), hexToRGB(theme.SelectionBg), displayName, ansiReset)
 	}
 	if file.IsDir {
-		return ansiDir + "  " + icon + " " + path + ansiReset
+		return fmt.Sprintf("\x1b[38;2;%s  %s%s", hexToRGB(theme.Accent), displayName, ansiReset)
 	}
-	return "  " + icon + " " + path
+	return fmt.Sprintf("\x1b[38;2;%s  %s%s", hexToRGB(theme.Foreground), displayName, ansiReset)
 }
 
 func formatSize(size int64) string {

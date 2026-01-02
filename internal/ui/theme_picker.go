@@ -108,18 +108,15 @@ func (m *themePickerModel) View() string {
 	containerStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(theme.Primary)).
-		Padding(1, 2)
+		Padding(1, 3).
+		Align(lipgloss.Center)
 
 	// Help style
 	helpStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(theme.Muted))
 
-	var b strings.Builder
-
-	b.WriteString(titleStyle.Render("Select Theme"))
-	b.WriteString("\n\n")
-
-	// Theme list
+	// Build theme list items
+	var themeItems []string
 	for i, t := range Themes {
 		var line string
 		if i == m.selectedIndex {
@@ -128,27 +125,25 @@ func (m *themePickerModel) View() string {
 				Foreground(lipgloss.Color(theme.SelectionFg)).
 				Background(lipgloss.Color(theme.SelectionBg)).
 				Bold(true).
-				Padding(0, 1)
-			line = selectedStyle.Render("> " + t.Name)
+				Padding(0, 2)
+			line = selectedStyle.Render(t.Name)
 		} else {
 			// Normal item
 			normalStyle := lipgloss.NewStyle().
 				Foreground(lipgloss.Color(theme.Foreground)).
-				Padding(0, 1)
-			line = normalStyle.Render("  " + t.Name)
+				Padding(0, 2)
+			line = normalStyle.Render(t.Name)
 		}
-		b.WriteString(line)
-		b.WriteString("\n")
+		themeItems = append(themeItems, line)
 	}
-
-	b.WriteString("\n")
 
 	// Color preview for selected theme
 	selectedTheme := Themes[m.selectedIndex]
 	previewStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(selectedTheme.Primary)).
-		Padding(0, 1)
+		Padding(0, 1).
+		Align(lipgloss.Center)
 
 	var previewContent strings.Builder
 	previewContent.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(selectedTheme.Primary)).Render("Primary"))
@@ -159,15 +154,17 @@ func (m *themePickerModel) View() string {
 	previewContent.WriteString("  ")
 	previewContent.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(selectedTheme.Error)).Render("Error"))
 
-	b.WriteString(previewStyle.Render(previewContent.String()))
-	b.WriteString("\n\n")
-
-	// Help text
-	b.WriteString(helpStyle.Render(fmt.Sprintf("Theme %d of %d", m.selectedIndex+1, len(Themes))))
-	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("Up/Down: navigate • Enter: confirm • Esc: cancel"))
-
-	content := containerStyle.Render(b.String())
+	// Stack everything centered
+	content := lipgloss.JoinVertical(lipgloss.Center,
+		titleStyle.Render("Select Theme"),
+		"",
+		lipgloss.JoinVertical(lipgloss.Center, themeItems...),
+		"",
+		previewStyle.Render(previewContent.String()),
+		"",
+		helpStyle.Render(fmt.Sprintf("Theme %d of %d", m.selectedIndex+1, len(Themes))),
+		helpStyle.Render("Up/Down: navigate • Enter: confirm • Esc: cancel"),
+	)
 
 	// Center the dialog
 	return lipgloss.Place(
@@ -175,6 +172,6 @@ func (m *themePickerModel) View() string {
 		m.height,
 		lipgloss.Center,
 		lipgloss.Center,
-		content,
+		containerStyle.Render(content),
 	)
 }

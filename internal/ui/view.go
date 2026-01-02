@@ -136,10 +136,14 @@ func (m Model) renderListView() string {
 	}
 	components = append(components, m.styles.HelpText.Render(helpText))
 
-	// Join all components vertically with appropriate spacing
-	mainView := m.styles.App.Render(
+	// Join all components vertically with center alignment
+	mainView := lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
 		lipgloss.JoinVertical(
-			lipgloss.Left,
+			lipgloss.Center,
 			components...,
 		),
 	)
