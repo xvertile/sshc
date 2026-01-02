@@ -1045,6 +1045,24 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.viewMode = ViewHelp
 			return m, nil
 		}
+	case "ctrl+s":
+		// Toggle "start in search mode" setting (works in any mode)
+		if m.appConfig != nil {
+			m.appConfig.StartInSearchMode = !m.appConfig.StartInSearchMode
+			config.SaveAppConfig(m.appConfig)
+			// Also toggle current search mode to match
+			if m.appConfig.StartInSearchMode {
+				m.searchMode = true
+				m.searchInput.Focus()
+				m.table.Blur()
+			} else {
+				m.searchMode = false
+				m.searchInput.Blur()
+				m.table.Focus()
+			}
+			m.updateTableStyles()
+		}
+		return m, nil
 	case "c":
 		if !m.searchMode && !m.deleteMode {
 			// Open theme picker (c for colors)

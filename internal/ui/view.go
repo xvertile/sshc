@@ -128,13 +128,30 @@ func (m Model) renderListView() string {
 	}
 
 	// Add the help text
-	var helpText string
+	theme := GetCurrentTheme()
+	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
+
+	var helpParts []string
 	if !m.searchMode {
-		helpText = " ↑/↓: navigate • Enter: connect • a: add SSH • K: add K8s • c: themes • h: help • q: quit"
+		helpParts = append(helpParts, mutedStyle.Render(" ↑/↓: navigate • Enter: connect • a: add • c: themes • ctrl+s: search focus "))
+		if m.appConfig != nil && m.appConfig.StartInSearchMode {
+			onStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary)).Bold(true)
+			helpParts = append(helpParts, onStyle.Render("[on]"))
+		} else {
+			helpParts = append(helpParts, mutedStyle.Render("[off]"))
+		}
+		helpParts = append(helpParts, mutedStyle.Render(" • h: help • q: quit"))
 	} else {
-		helpText = " Type to filter • Enter: validate • Tab: switch • Esc: exit search"
+		helpParts = append(helpParts, mutedStyle.Render(" Type to filter • Enter: validate • Tab: switch • ctrl+s: search focus "))
+		if m.appConfig != nil && m.appConfig.StartInSearchMode {
+			onStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary)).Bold(true)
+			helpParts = append(helpParts, onStyle.Render("[on]"))
+		} else {
+			helpParts = append(helpParts, mutedStyle.Render("[off]"))
+		}
+		helpParts = append(helpParts, mutedStyle.Render(" • Esc: exit"))
 	}
-	components = append(components, m.styles.HelpText.Render(helpText))
+	components = append(components, strings.Join(helpParts, ""))
 
 	// Join all components vertically with center alignment
 	mainView := lipgloss.Place(

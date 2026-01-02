@@ -18,9 +18,10 @@ type KeyBindings struct {
 
 // AppConfig represents the main application configuration
 type AppConfig struct {
-	KeyBindings KeyBindings `json:"key_bindings"`
-	Theme       string      `json:"theme"`
-	SortMode    string      `json:"sort_mode"` // "name" or "recent"
+	KeyBindings       KeyBindings `json:"key_bindings"`
+	Theme             string      `json:"theme"`
+	SortMode          string      `json:"sort_mode"`           // "name" or "recent"
+	StartInSearchMode bool        `json:"start_in_search_mode"` // Start with search focused
 }
 
 // GetDefaultKeyBindings returns the default key bindings configuration

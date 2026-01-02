@@ -197,6 +197,13 @@ func NewModel(hosts []config.SSHHost, configFile, currentVersion string) Model {
 	m.filteredHosts = sortedHosts
 	m.filteredK8sHosts = k8sHosts
 
+	// Start in search mode if configured
+	if appConfig != nil && appConfig.StartInSearchMode {
+		m.searchMode = true
+		m.searchInput.Focus()
+		m.table.Blur()
+	}
+
 	// Initialize table styles based on initial focus state
 	m.updateTableStyles()
 
