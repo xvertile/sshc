@@ -23,6 +23,43 @@ func (m Model) sortHosts(hosts []config.SSHHost) []config.SSHHost {
 	}
 }
 
+// sortEntries sorts unified entries according to the current sort mode
+func (m Model) sortEntries(entries []HostEntry) []HostEntry {
+	sorted := make([]HostEntry, len(entries))
+	copy(sorted, entries)
+
+	switch m.sortMode {
+	case SortByLastUsed:
+		if m.historyManager != nil {
+			sort.SliceStable(sorted, func(i, j int) bool {
+				timeI, existsI := m.historyManager.GetLastConnectionTime(sorted[i].Name)
+				timeJ, existsJ := m.historyManager.GetLastConnectionTime(sorted[j].Name)
+
+				// Hosts with history come first
+				if existsI && !existsJ {
+					return true
+				}
+				if !existsI && existsJ {
+					return false
+				}
+				if existsI && existsJ {
+					return timeI.After(timeJ)
+				}
+				// Both without history: sort alphabetically
+				return strings.ToLower(sorted[i].Name) < strings.ToLower(sorted[j].Name)
+			})
+		}
+	case SortByName:
+		fallthrough
+	default:
+		sort.Slice(sorted, func(i, j int) bool {
+			return strings.ToLower(sorted[i].Name) < strings.ToLower(sorted[j].Name)
+		})
+	}
+
+	return sorted
+}
+
 // sortHostsByName sorts a slice of SSH hosts alphabetically by name
 func sortHostsByName(hosts []config.SSHHost) []config.SSHHost {
 	sorted := make([]config.SSHHost, len(hosts))
