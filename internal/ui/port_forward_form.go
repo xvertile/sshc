@@ -216,8 +216,11 @@ func (m *portForwardModel) updateInputVisibility() {
 func (m *portForwardModel) View() string {
 	var sections []string
 
+	// Logo
+	sections = append(sections, m.styles.Header.Render(asciiTitle))
+
 	// Title
-	title := m.styles.Header.Render("🔗 Port Forwarding Setup")
+	title := m.styles.Header.Render("Port Forwarding Setup")
 	sections = append(sections, title)
 
 	// Host info

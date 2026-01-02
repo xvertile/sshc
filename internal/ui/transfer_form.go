@@ -416,8 +416,11 @@ func (m *transferFormModel) applyHistoryItem(idx int) {
 func (m *transferFormModel) View() string {
 	var sections []string
 
+	// Logo
+	sections = append(sections, m.styles.Header.Render(asciiTitle))
+
 	// Title
-	title := m.styles.Header.Render("📁 File Transfer")
+	title := m.styles.Header.Render("File Transfer")
 	sections = append(sections, title)
 
 	// Host info

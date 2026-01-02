@@ -533,6 +533,10 @@ func (m *remoteBrowserModel) View() string {
 	var b strings.Builder
 	theme := GetCurrentTheme()
 
+	// Logo
+	b.WriteString(m.styles.Header.Render(asciiTitle))
+	b.WriteString("\n")
+
 	// Title
 	b.WriteString(m.styles.Header.Render(fmt.Sprintf("Remote Browser: %s", m.host)))
 	b.WriteString("\n")

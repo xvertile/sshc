@@ -399,8 +399,11 @@ func (m *quickTransferModel) executeTransfer() tea.Cmd {
 func (m *quickTransferModel) View() string {
 	var sections []string
 
+	// Logo
+	sections = append(sections, m.styles.Header.Render(asciiTitle))
+
 	// Title
-	title := m.styles.Header.Render("📁 Quick Transfer")
+	title := m.styles.Header.Render("Quick Transfer")
 	sections = append(sections, title)
 	sections = append(sections, m.styles.HelpText.Render(fmt.Sprintf("Host: %s", m.hostName)))
 	sections = append(sections, "")
