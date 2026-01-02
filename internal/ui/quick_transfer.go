@@ -397,10 +397,8 @@ func (m *quickTransferModel) executeTransfer() tea.Cmd {
 }
 
 func (m *quickTransferModel) View() string {
+	theme := GetCurrentTheme()
 	var sections []string
-
-	// Logo
-	sections = append(sections, m.styles.Header.Render(asciiTitle))
 
 	// Title
 	title := m.styles.Header.Render("Quick Transfer")
@@ -437,11 +435,11 @@ func (m *quickTransferModel) View() string {
 
 			var fileBtn, folderBtn string
 			if m.selectedIdx == 0 {
-				fileBtn = m.styles.ActiveTab.Render("  📄 File  ")
-				folderBtn = m.styles.InactiveTab.Render("  📁 Folder  ")
+				fileBtn = m.styles.ActiveTab.Render("  File  ")
+				folderBtn = m.styles.InactiveTab.Render("  Folder  ")
 			} else {
-				fileBtn = m.styles.InactiveTab.Render("  📄 File  ")
-				folderBtn = m.styles.ActiveTab.Render("  📁 Folder  ")
+				fileBtn = m.styles.InactiveTab.Render("  File  ")
+				folderBtn = m.styles.ActiveTab.Render("  Folder  ")
 			}
 			buttons := lipgloss.JoinHorizontal(lipgloss.Center, fileBtn, "    ", folderBtn)
 			sections = append(sections, buttons)
@@ -454,11 +452,11 @@ func (m *quickTransferModel) View() string {
 
 			var fileBtn, folderBtn string
 			if m.selectedIdx == 0 {
-				fileBtn = m.styles.ActiveTab.Render("  📄 File  ")
-				folderBtn = m.styles.InactiveTab.Render("  📁 Folder  ")
+				fileBtn = m.styles.ActiveTab.Render("  File  ")
+				folderBtn = m.styles.InactiveTab.Render("  Folder  ")
 			} else {
-				fileBtn = m.styles.InactiveTab.Render("  📄 File  ")
-				folderBtn = m.styles.ActiveTab.Render("  📁 Folder  ")
+				fileBtn = m.styles.InactiveTab.Render("  File  ")
+				folderBtn = m.styles.ActiveTab.Render("  Folder  ")
 			}
 			buttons := lipgloss.JoinHorizontal(lipgloss.Center, fileBtn, "    ", folderBtn)
 			sections = append(sections, buttons)
@@ -515,7 +513,7 @@ func (m *quickTransferModel) View() string {
 			sections = append(sections, loadingStyle.Render("Transfer in progress..."))
 
 		case QTStateDone:
-			sections = append(sections, m.styles.Label.Render("✓ Transfer complete!"))
+			sections = append(sections, m.styles.Label.Render("[OK] Transfer complete!"))
 			sections = append(sections, "")
 			sections = append(sections, m.styles.HelpText.Render("Local: "+m.localPath))
 			sections = append(sections, m.styles.HelpText.Render("Remote: "+m.remotePath))
@@ -524,12 +522,25 @@ func (m *quickTransferModel) View() string {
 
 	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
 
+	// Container with primary color border
+	container := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(theme.Primary)).
+		Padding(1, 2).
+		Render(content)
+
+	// Logo outside the container
+	logo := m.styles.Header.Render(asciiTitle)
+
+	// Stack logo and container
+	fullContent := lipgloss.JoinVertical(lipgloss.Center, logo, "", container)
+
 	return lipgloss.Place(
 		m.width,
 		m.height,
 		lipgloss.Center,
 		lipgloss.Center,
-		m.styles.FormContainer.Render(content),
+		fullContent,
 	)
 }
 

@@ -214,10 +214,8 @@ func (m *portForwardModel) updateInputVisibility() {
 }
 
 func (m *portForwardModel) View() string {
+	theme := GetCurrentTheme()
 	var sections []string
-
-	// Logo
-	sections = append(sections, m.styles.Header.Render(asciiTitle))
 
 	// Title
 	title := m.styles.Header.Render("Port Forwarding Setup")
@@ -355,13 +353,26 @@ func (m *portForwardModel) View() string {
 	// Join all sections
 	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
 
+	// Container with primary color border
+	container := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(theme.Primary)).
+		Padding(1, 2).
+		Render(content)
+
+	// Logo outside the container
+	logo := m.styles.Header.Render(asciiTitle)
+
+	// Stack logo and container
+	fullContent := lipgloss.JoinVertical(lipgloss.Center, logo, "", container)
+
 	// Center the form
 	return lipgloss.Place(
 		m.width,
 		m.height,
 		lipgloss.Center,
 		lipgloss.Center,
-		m.styles.FormContainer.Render(content),
+		fullContent,
 	)
 }
 

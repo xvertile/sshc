@@ -9,6 +9,7 @@ import (
 
 	"github.com/xvertile/sshc/internal/transfer"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // BrowserMode defines whether we're selecting files or directories
@@ -533,10 +534,6 @@ func (m *remoteBrowserModel) View() string {
 	var b strings.Builder
 	theme := GetCurrentTheme()
 
-	// Logo
-	b.WriteString(m.styles.Header.Render(asciiTitle))
-	b.WriteString("\n")
-
 	// Title
 	b.WriteString(m.styles.Header.Render(fmt.Sprintf("Remote Browser: %s", m.host)))
 	b.WriteString("\n")
@@ -583,7 +580,7 @@ func (m *remoteBrowserModel) View() string {
 		}
 
 		if displayFiles != nil {
-			visibleHeight := m.height - 10
+			visibleHeight := m.height - 16 // Account for logo + container padding
 			if visibleHeight < 5 {
 				visibleHeight = 5
 			}
@@ -631,7 +628,28 @@ func (m *remoteBrowserModel) View() string {
 		b.WriteString(" ↑/↓: navigate | Enter: select | /: search | r: retry | Esc: cancel\n")
 	}
 
-	return b.String()
+	content := b.String()
+
+	// Container with primary color border
+	container := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(theme.Primary)).
+		Padding(1, 2).
+		Render(content)
+
+	// Logo outside the container
+	logo := m.styles.Header.Render(asciiTitle)
+
+	// Stack logo and container
+	fullContent := lipgloss.JoinVertical(lipgloss.Center, logo, "", container)
+
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		fullContent,
+	)
 }
 
 // ANSI escape codes

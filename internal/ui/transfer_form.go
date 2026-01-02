@@ -414,10 +414,8 @@ func (m *transferFormModel) applyHistoryItem(idx int) {
 }
 
 func (m *transferFormModel) View() string {
+	theme := GetCurrentTheme()
 	var sections []string
-
-	// Logo
-	sections = append(sections, m.styles.Header.Render(asciiTitle))
 
 	// Title
 	title := m.styles.Header.Render("File Transfer")
@@ -471,8 +469,8 @@ func (m *transferFormModel) View() string {
 		sections = append(sections, typeLabel)
 
 		// File/Folder toggle buttons
-		fileBtn := " 📄 File "
-		folderBtn := " 📁 Folder "
+		fileBtn := "  File  "
+		folderBtn := "  Folder  "
 		if m.uploadType == UploadFile {
 			fileBtn = m.styles.ActiveTab.Render(fileBtn)
 			folderBtn = m.styles.InactiveTab.Render(folderBtn)
@@ -560,13 +558,26 @@ func (m *transferFormModel) View() string {
 	// Join all sections
 	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
 
+	// Container with primary color border
+	container := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(theme.Primary)).
+		Padding(1, 2).
+		Render(content)
+
+	// Logo outside the container
+	logo := m.styles.Header.Render(asciiTitle)
+
+	// Stack logo and container
+	fullContent := lipgloss.JoinVertical(lipgloss.Center, logo, "", container)
+
 	// Center the form
 	return lipgloss.Place(
 		m.width,
 		m.height,
 		lipgloss.Center,
 		lipgloss.Center,
-		m.styles.FormContainer.Render(content),
+		fullContent,
 	)
 }
 
