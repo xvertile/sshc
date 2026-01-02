@@ -64,6 +64,55 @@ func (m Model) filterHosts(query string) []config.SSHHost {
 	return result
 }
 
+// filterEntries filters unified entries (SSH + K8s) according to the search query
+func (m Model) filterEntries(query string) []HostEntry {
+	if query == "" {
+		return m.allEntries
+	}
+
+	query = strings.ToLower(query)
+	words := strings.Fields(query)
+
+	var filtered []HostEntry
+	for _, entry := range m.allEntries {
+		matchesAll := true
+		for _, word := range words {
+			if !entryMatchesWord(entry, word) {
+				matchesAll = false
+				break
+			}
+		}
+		if matchesAll {
+			filtered = append(filtered, entry)
+		}
+	}
+
+	return filtered
+}
+
+// entryMatchesWord checks if a HostEntry matches a single search word
+func entryMatchesWord(entry HostEntry, word string) bool {
+	// Check name
+	if strings.Contains(strings.ToLower(entry.Name), word) {
+		return true
+	}
+	// Check hostname
+	if strings.Contains(strings.ToLower(entry.Hostname), word) {
+		return true
+	}
+	// Check user (from underlying SSH host if available)
+	if entry.SSHHost != nil && strings.Contains(strings.ToLower(entry.SSHHost.User), word) {
+		return true
+	}
+	// Check tags
+	for _, tag := range entry.Tags {
+		if strings.Contains(strings.ToLower(tag), word) {
+			return true
+		}
+	}
+	return false
+}
+
 // filterHostsByWord filters hosts according to a single word
 func (m Model) filterHostsByWord(word string) []config.SSHHost {
 	var filtered []config.SSHHost

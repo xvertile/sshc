@@ -689,6 +689,14 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.table.Focus()
 			return m, nil
 		}
+		if m.searchMode {
+			// Exit search mode
+			m.searchMode = false
+			m.updateTableStyles()
+			m.searchInput.Blur()
+			m.table.Focus()
+			return m, nil
+		}
 		// Use configurable key bindings for quit
 		if m.appConfig != nil && m.appConfig.KeyBindings.ShouldQuitOnKey(key) {
 			return m, tea.Quit
@@ -1089,17 +1097,17 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.searchMode {
 		oldValue := m.searchInput.Value()
 		m.searchInput, cmd = m.searchInput.Update(msg)
-		// Update filtered hosts only if the search value has changed
+		// Update filtered entries only if the search value has changed
 		if m.searchInput.Value() != oldValue {
 			currentCursor := m.table.Cursor()
 			if m.searchInput.Value() != "" {
-				m.filteredHosts = m.filterHosts(m.searchInput.Value())
+				m.filteredEntries = m.filterEntries(m.searchInput.Value())
 			} else {
-				m.filteredHosts = m.sortHosts(m.hosts)
+				m.filteredEntries = m.allEntries
 			}
 			m.updateTableRows()
 			// If the current cursor position is beyond the filtered results, reset to 0
-			if currentCursor >= len(m.filteredHosts) && len(m.filteredHosts) > 0 {
+			if currentCursor >= len(m.filteredEntries) && len(m.filteredEntries) > 0 {
 				m.table.SetCursor(0)
 			}
 		}

@@ -132,7 +132,7 @@ func (m Model) renderListView() string {
 	if !m.searchMode {
 		helpText = " ↑/↓: navigate • Enter: connect • a: add SSH • K: add K8s • c: themes • h: help • q: quit"
 	} else {
-		helpText = " Type to filter • Enter: validate • Tab: switch • ESC: quit"
+		helpText = " Type to filter • Enter: validate • Tab: switch • Esc: exit search"
 	}
 	components = append(components, m.styles.HelpText.Render(helpText))
 

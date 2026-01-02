@@ -220,7 +220,13 @@ func (m *Model) updateTableHeight() {
 	// Total reserved: 14 lines minimum to preserve essential UI elements
 	reservedHeight := 14
 	availableHeight := m.height - reservedHeight
-	hostCount := len(m.table.Rows())
+
+	// Use total entry count (not filtered) to maintain consistent table size
+	// This prevents the table from shrinking when filtering
+	totalHostCount := len(m.allEntries)
+	if totalHostCount == 0 {
+		totalHostCount = len(m.hosts)
+	}
 
 	// Minimum height should be at least 3 rows for basic usability
 	// Even in very small terminals, we want to show at least header + 2 hosts
@@ -231,7 +237,7 @@ func (m *Model) updateTableHeight() {
 	}
 
 	tableHeight := 1 // header
-	dataRowsNeeded := hostCount
+	dataRowsNeeded := totalHostCount
 	maxDataRows := maxTableHeight - 1 // subtract 1 for header
 
 	if dataRowsNeeded <= maxDataRows {
