@@ -20,7 +20,7 @@
 
 SSHC transforms your `~/.ssh/config` into a searchable, navigable interface — letting you connect to servers, transfer files, and manage hosts without memorizing hostnames or typing lengthy commands.
 
-Built with Go and the [Charm](https://charm.sh) ecosystem for a fast, responsive experience that feels native to the terminal.
+Built with Go and the [Charm](https://charm.sh) ecosystem. Continuation of [sshm](https://github.com/Gu1llaum-3/sshm).
 
 ---
 
@@ -175,8 +175,242 @@ sshc update               Check for and install updates
 
 ---
 
-## Cross-Platform
+## Usage
 
-- macOS, Linux, Windows support
+### Interactive Mode
+
+Launch without arguments to enter the TUI:
+
+```bash
+sshc
+```
+
+### Navigation
+
+```
+up/down, j/k      Navigate hosts
+enter             Connect to selected host
+a                 Add new host
+e                 Edit selected host
+d                 Delete selected host
+m                 Move host to another config file
+f                 Port forwarding setup
+t                 File transfer
+/                 Search/filter hosts
+s                 Switch sort mode (name/recent)
+n                 Sort by name
+r                 Sort by recent
+tab               Cycle filter modes
+q                 Quit
+```
+
+### Status Indicators
+
+- Green — host is reachable via SSH
+- Yellow — currently checking connectivity
+- Red — host is unreachable or connection failed
+- Gray — status not yet determined
+
+### Direct Connection
+
+Connect to any configured host without entering the TUI:
+
+```bash
+sshc production-server
+sshc db-staging
+sshc web-01
+```
+
+All direct connections are tracked in history. Use `-c` for custom config files:
+
+```bash
+sshc my-server -c /path/to/custom/ssh_config
+```
+
+---
+
+## Port Forwarding
+
+Press `f` while a host is selected to open the port forwarding interface.
+
+### Forward Types
+
+**Local (-L)** — forward a local port to a remote host through the SSH connection
+
+```
+ssh -L 15432:localhost:5432 server
+# Database on remote localhost:5432 becomes accessible at localhost:15432
+```
+
+**Remote (-R)** — forward a remote port back to a local service
+
+```
+ssh -R 8080:localhost:3000 server
+# Local app on port 3000 becomes accessible from remote host's port 8080
+```
+
+Requirements for external access:
+- SSH server config: `GatewayPorts yes` in `/etc/ssh/sshd_config`
+- Firewall: open the remote port
+- Bind address: use `0.0.0.0` for external, `127.0.0.1` for local-only
+
+**Dynamic (-D)** — create a SOCKS proxy
+
+```
+ssh -D 1080 server
+# Configure browser to use localhost:1080 as SOCKS5 proxy
+```
+
+### Port Forwarding History
+
+SSHC remembers forwarding configurations per host. Previously used setups appear as suggestions for quick reuse.
+
+---
+
+## Configuration
+
+SSHC works directly with your `~/.ssh/config` file. Custom configs can be specified with `-c`:
+
+```bash
+sshc -c /path/to/config
+```
+
+### SSH Include Support
+
+Organize configurations across multiple files:
+
+```ssh
+# ~/.ssh/config
+Include ~/.ssh/conf.d/*
+Include work-servers.conf
+
+Host personal
+    HostName personal.example.com
+    User me
+```
+
+The `move` command relocates hosts between included config files.
+
+### Supported SSH Options
+
+Built-in fields:
+- `HostName` — server address
+- `User` — SSH username
+- `Port` — SSH port
+- `IdentityFile` — path to private key
+- `ProxyJump` — jump host for tunneling
+- `Tags` — custom tags (SSHC extension)
+
+Any valid SSH option can be added through the forms. Enter in command-line format:
+
+```
+-o Compression=yes -o ServerAliveInterval=60
+```
+
+This converts to:
+
+```ssh
+    Compression yes
+    ServerAliveInterval 60
+```
+
+Common options: `Compression`, `ServerAliveInterval`, `ServerAliveCountMax`, `StrictHostKeyChecking`, `UserKnownHostsFile`, `BatchMode`, `ConnectTimeout`, `ControlMaster`, `ControlPath`, `ControlPersist`, `ForwardAgent`, `LocalForward`, `RemoteForward`, `DynamicForward`.
+
+### Custom Key Bindings
+
+Configure in `~/.config/sshc/config.json`:
+
+```json
+{
+  "key_bindings": {
+    "quit_keys": ["q", "ctrl+c"],
+    "disable_esc_quit": true
+  }
+}
+```
+
+Set `disable_esc_quit` to `true` if you use vim and accidentally quit with ESC.
+
+### Data Storage
+
+```
+~/.config/sshc/
+├── config.json          # preferences, keybindings
+├── history.json         # connection history
+├── k8s.yaml             # kubernetes hosts
+└── backups/             # automatic config backups
+```
+
+Backups are created automatically before any configuration change.
+
+---
+
+## Platform Notes
+
+**macOS / Linux**
+- Standard config: `~/.ssh/config`
 - XDG Base Directory compliance on Linux
-- Proper permissions — enforces 0600 for config, 0700 for directories
+- File permissions enforced (0600 config, 0700 directories)
+
+**Windows**
+- Works with built-in OpenSSH client (Windows 10/11)
+- Config location: `%USERPROFILE%\.ssh\config`
+- Compatible with WSL configurations
+
+---
+
+## Building from Source
+
+```bash
+git clone https://github.com/xvertile/sshc.git
+cd sshc
+go build -o sshc .
+sudo mv sshc /usr/local/bin/
+```
+
+### Dependencies
+
+- [Cobra](https://github.com/spf13/cobra) — CLI framework
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea) — TUI framework
+- [Bubbles](https://github.com/charmbracelet/bubbles) — TUI components
+- [Lip Gloss](https://github.com/charmbracelet/lipgloss) — styling
+- [x/crypto/ssh](https://golang.org/x/crypto/ssh) — SSH connectivity
+
+---
+
+## Releases
+
+| Platform | Architecture | Download |
+|----------|--------------|----------|
+| Linux | AMD64 | [sshc-linux-amd64.tar.gz](https://github.com/xvertile/sshc/releases/latest/download/sshc-linux-amd64.tar.gz) |
+| Linux | ARM64 | [sshc-linux-arm64.tar.gz](https://github.com/xvertile/sshc/releases/latest/download/sshc-linux-arm64.tar.gz) |
+| macOS | Intel | [sshc-darwin-amd64.tar.gz](https://github.com/xvertile/sshc/releases/latest/download/sshc-darwin-amd64.tar.gz) |
+| macOS | Apple Silicon | [sshc-darwin-arm64.tar.gz](https://github.com/xvertile/sshc/releases/latest/download/sshc-darwin-arm64.tar.gz) |
+| Windows | AMD64 | [sshc-windows-amd64.zip](https://github.com/xvertile/sshc/releases/latest/download/sshc-windows-amd64.zip) |
+| Windows | ARM64 | [sshc-windows-arm64.zip](https://github.com/xvertile/sshc/releases/latest/download/sshc-windows-arm64.zip) |
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/new-feature`)
+3. Commit changes (`git commit -m 'Add new feature'`)
+4. Push to branch (`git push origin feature/new-feature`)
+5. Open a Pull Request
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE) for details.
+
+---
+
+## Acknowledgments
+
+- [Charm](https://charm.sh/) for the TUI libraries
+- [Guillaume](https://github.com/Gu1llaum-3) for the original [sshm](https://github.com/Gu1llaum-3/sshm)
+- [yimeng](https://github.com/yimeng) for SSH Include directive support
+- [ldreux](https://github.com/ldreux) for multi-word search
+- [qingfengzxr](https://github.com/qingfengzxr) for custom key bindings
