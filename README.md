@@ -81,7 +81,7 @@ One-key connect — select a host, press Enter.
 - Retry on failure — connection error view with instant retry option
 
 <p align="center">
-  <img src="images/hosts-crud.gif" alt="connection">
+  <img src="images/connection.gif" alt="connection">
 </p>
 
 ### File Transfer
