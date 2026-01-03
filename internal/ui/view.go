@@ -67,6 +67,12 @@ func (m Model) View() string {
 		if m.themePicker != nil {
 			return m.themePicker.View()
 		}
+	case ViewConnectionError:
+		return m.renderConnectionErrorView()
+	case ViewSSHKeyUpload:
+		if m.sshKeyUploadForm != nil {
+			return m.sshKeyUploadForm.View()
+		}
 	case ViewList:
 		return m.renderListView()
 	}
@@ -265,4 +271,95 @@ func (m Model) renderUpdateNotification() string {
 		BorderForeground(lipgloss.Color("#00AA00")) // Darker green border
 
 	return notificationStyle.Render(message)
+}
+
+// renderConnectionErrorView renders the connection error view with retry option
+func (m Model) renderConnectionErrorView() string {
+	theme := GetCurrentTheme()
+
+	// Title
+	title := "CONNECTION FAILED"
+	hostInfo := fmt.Sprintf("Host: %s", m.connectionHost)
+
+	// Error message - wrap long errors
+	errorLines := strings.Split(m.connectionError, "\n")
+	var formattedError string
+	for _, line := range errorLines {
+		if len(line) > 60 {
+			// Word wrap long lines
+			words := strings.Fields(line)
+			currentLine := ""
+			for _, word := range words {
+				if len(currentLine)+len(word)+1 > 60 {
+					formattedError += currentLine + "\n"
+					currentLine = word
+				} else {
+					if currentLine == "" {
+						currentLine = word
+					} else {
+						currentLine += " " + word
+					}
+				}
+			}
+			if currentLine != "" {
+				formattedError += currentLine + "\n"
+			}
+		} else {
+			formattedError += line + "\n"
+		}
+	}
+	formattedError = strings.TrimSuffix(formattedError, "\n")
+
+	help := "r/Enter: retry • Esc/q: back to list"
+
+	// Styles
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary))
+	hostStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Accent))
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203")) // Red
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
+
+	lines := []string{
+		titleStyle.Render(title),
+		"",
+		hostStyle.Render(hostInfo),
+		"",
+		errorStyle.Render(formattedError),
+		"",
+		helpStyle.Render(help),
+	}
+
+	// Compute the real maximum width
+	maxw := 0
+	for _, ln := range lines {
+		w := lipgloss.Width(ln)
+		if w > maxw {
+			maxw = w
+		}
+	}
+	if maxw < 50 {
+		maxw = 50
+	}
+
+	raw := strings.Join(lines, "\n")
+
+	// Container style
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(theme.Primary)).
+		PaddingTop(1).PaddingBottom(1).PaddingLeft(2).PaddingRight(2).
+		Width(maxw + 4)
+
+	// Logo
+	logo := m.styles.Header.Render(asciiTitle)
+
+	// Stack logo and container
+	fullContent := lipgloss.JoinVertical(lipgloss.Center, logo, "", box.Render(raw))
+
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		fullContent,
+	)
 }

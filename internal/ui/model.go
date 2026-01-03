@@ -48,6 +48,8 @@ const (
 	ViewK8sAdd
 	ViewK8sEdit
 	ViewTheme
+	ViewConnectionError
+	ViewSSHKeyUpload
 )
 
 // PortForwardType defines the type of port forwarding
@@ -127,6 +129,7 @@ type Model struct {
 	k8sAddForm        *k8sAddFormModel
 	k8sEditForm       *k8sEditFormModel
 	themePicker       *themePickerModel
+	sshKeyUploadForm  *sshKeyUploadModel
 
 	// Terminal size and styles
 	width  int
@@ -137,6 +140,11 @@ type Model struct {
 	// Error handling
 	errorMessage string
 	showingError bool
+
+	// Connection retry state
+	connectionHost  string // Host being connected to
+	connectionIsK8s bool   // Whether it's a k8s host
+	connectionError string // Last connection error
 }
 
 // updateTableStyles updates the table header border color based on focus state

@@ -23,6 +23,11 @@ type (
 	errorMsg        string
 )
 
+// sshConnectionResultMsg is sent when an SSH/kubectl connection completes
+type sshConnectionResultMsg struct {
+	err error
+}
+
 // startPingAllCmd creates a command to ping all hosts concurrently
 func (m Model) startPingAllCmd() tea.Cmd {
 	if m.pingManager == nil {
@@ -146,6 +151,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.fileSelectorForm.height = m.height
 			m.fileSelectorForm.styles = m.styles
 		}
+		if m.sshKeyUploadForm != nil {
+			m.sshKeyUploadForm.width = m.width
+			m.sshKeyUploadForm.height = m.height
+			m.sshKeyUploadForm.styles = m.styles
+		}
 		return m, nil
 
 	case pingResultMsg:
@@ -176,6 +186,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.errorMessage = ""
 		}
 		return m, nil
+
+	case sshConnectionResultMsg:
+		// Handle SSH/kubectl connection result
+		if msg.err != nil {
+			// Connection failed - show error view for retry
+			m.connectionError = msg.err.Error()
+			m.viewMode = ViewConnectionError
+			return m, nil
+		}
+		// Connection succeeded (user exited normally) - quit
+		return m, tea.Quit
 
 	case addFormSubmitMsg:
 		if msg.err != nil {
@@ -571,6 +592,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.table.Focus()
 		return m, nil
 
+	case sshKeyUploadSubmitMsg:
+		// Handle SSH key upload result
+		if m.sshKeyUploadForm != nil {
+			var newForm *sshKeyUploadModel
+			newForm, cmd = m.sshKeyUploadForm.Update(msg)
+			m.sshKeyUploadForm = newForm
+			return m, cmd
+		}
+		return m, nil
+
+	case sshKeyUploadCancelMsg:
+		// Cancel: return to list view
+		m.viewMode = ViewList
+		m.sshKeyUploadForm = nil
+		m.table.Focus()
+		return m, nil
+
 	case tea.KeyMsg:
 		// Handle view-specific key presses
 		switch m.viewMode {
@@ -665,6 +703,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.themePicker = newPicker
 				// Update styles after theme picker changes
 				m.styles = NewStyles(m.width)
+				return m, cmd
+			}
+		case ViewConnectionError:
+			// Handle connection error view keys
+			return m.handleConnectionErrorKeys(msg)
+		case ViewSSHKeyUpload:
+			if m.sshKeyUploadForm != nil {
+				var newForm *sshKeyUploadModel
+				newForm, cmd = m.sshKeyUploadForm.Update(msg)
+				m.sshKeyUploadForm = newForm
 				return m, cmd
 			}
 		case ViewList:
@@ -807,6 +855,11 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				hostName := extractHostNameFromTableRow(selected[0])
 				isK8s := isK8sHostFromTableRow(selected[0])
 
+				// Store connection info for retry
+				m.connectionHost = hostName
+				m.connectionIsK8s = isK8s
+				m.connectionError = ""
+
 				// Record the connection in history
 				if m.historyManager != nil {
 					err := m.historyManager.RecordConnection(hostName)
@@ -824,7 +877,7 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					}
 					kubectlCmd := k8sHost.BuildKubectlCommand()
 					return m, tea.ExecProcess(kubectlCmd, func(err error) tea.Msg {
-						return tea.Quit()
+						return sshConnectionResultMsg{err: err}
 					})
 				} else {
 					// Build the SSH command with the appropriate config file
@@ -835,7 +888,7 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						sshCmd = exec.Command("ssh", hostName)
 					}
 					return m, tea.ExecProcess(sshCmd, func(err error) tea.Msg {
-						return tea.Quit()
+						return sshConnectionResultMsg{err: err}
 					})
 				}
 			}
@@ -1070,6 +1123,26 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.viewMode = ViewTheme
 			return m, nil
 		}
+	case "k":
+		if !m.searchMode && !m.deleteMode {
+			// Upload SSH key to the selected host
+			selected := m.table.SelectedRow()
+			if len(selected) > 0 {
+				// Check if it's a k8s host
+				if isK8sHostFromTableRow(selected[0]) {
+					m.errorMessage = "SSH key upload is not supported for Kubernetes hosts"
+					m.showingError = true
+					return m, func() tea.Msg {
+						time.Sleep(2 * time.Second)
+						return errorMsg("clear")
+					}
+				}
+				hostName := extractHostNameFromTableRow(selected[0])
+				m.sshKeyUploadForm = NewSSHKeyUploadForm(hostName, m.styles, m.width, m.height, m.configFile)
+				m.viewMode = ViewSSHKeyUpload
+				return m, textinput.Blink
+			}
+		}
 	case "s":
 		if !m.searchMode && !m.deleteMode {
 			// Cycle through sort modes (only 2 modes now)
@@ -1137,4 +1210,50 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, cmd
+}
+
+// handleConnectionErrorKeys handles key presses in the connection error view
+func (m Model) handleConnectionErrorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	switch key {
+	case "r", "R", "enter":
+		// Retry connection
+		m.connectionError = ""
+
+		if m.connectionIsK8s {
+			// Get k8s host and build kubectl exec command
+			k8sHost, err := config.GetK8sHost(m.connectionHost)
+			if err != nil {
+				m.connectionError = err.Error()
+				return m, nil
+			}
+			kubectlCmd := k8sHost.BuildKubectlCommand()
+			return m, tea.ExecProcess(kubectlCmd, func(err error) tea.Msg {
+				return sshConnectionResultMsg{err: err}
+			})
+		} else {
+			// Build the SSH command with the appropriate config file
+			var sshCmd *exec.Cmd
+			if m.configFile != "" {
+				sshCmd = exec.Command("ssh", "-F", m.configFile, m.connectionHost)
+			} else {
+				sshCmd = exec.Command("ssh", m.connectionHost)
+			}
+			return m, tea.ExecProcess(sshCmd, func(err error) tea.Msg {
+				return sshConnectionResultMsg{err: err}
+			})
+		}
+
+	case "esc", "q", "ctrl+c":
+		// Return to list view
+		m.viewMode = ViewList
+		m.connectionHost = ""
+		m.connectionIsK8s = false
+		m.connectionError = ""
+		m.table.Focus()
+		return m, nil
+	}
+
+	return m, nil
 }
