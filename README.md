@@ -120,19 +120,7 @@ Local, remote, and dynamic forwarding with saved configurations.
 - History — remembers previous port forward configurations per host
 
 <p align="center">
-  <img src="images/img.png" alt="port forwarding">
-</p>
-
-### Kubernetes Support
-
-Manage K8s pods alongside SSH hosts in a unified interface.
-
-- `kubectl exec` integration with namespace, context, and container selection
-- Separate config — K8s hosts stored in `~/.config/sshc/k8s.yaml`
-- Tags and organization — same tag system as SSH hosts
-
-<p align="center">
-  <img src="images/img.png" alt="kubernetes support">
+  <img src="images/port.gif" alt="port forwarding">
 </p>
 
 ### Search & Filter
@@ -146,6 +134,16 @@ Real-time search across hosts by name, hostname, or tags.
   <img src="images/connection.gif" alt="search">
 </p>
 
+
+### Kubernetes Support
+
+Manage K8s pods alongside SSH hosts in a unified interface.
+
+- `kubectl exec` integration with namespace, context, and container selection
+- Separate config — K8s hosts stored in `~/.config/sshc/k8s.yaml`
+- Tags and organization — same tag system as SSH hosts
+
+
 ### Customization
 
 Themes, keybindings, and persistent preferences.
@@ -155,7 +153,7 @@ Themes, keybindings, and persistent preferences.
 - Persistent preferences — sort mode, theme, search focus saved to config
 
 <p align="center">
-  <img src="images/img.png" alt="customization">
+  <img src="images/themes.gif" alt="customization">
 </p>
 
 ---
