@@ -133,13 +133,16 @@ func (m Model) renderListView() string {
 		components = append(components, m.styles.TableFocused.Render(m.table.View()))
 	}
 
-	// Add the help text
+	// Add the help text - constrained to table width
 	theme := GetCurrentTheme()
 	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
 
+	// Calculate table width from current columns
+	tableWidth := m.getTableWidth()
+
 	var helpParts []string
 	if !m.searchMode {
-		helpParts = append(helpParts, mutedStyle.Render(" ↑/↓: navigate • Enter: connect • a: add • c: themes • ctrl+s: search focus "))
+		helpParts = append(helpParts, mutedStyle.Render("↑/↓: navigate • Enter: connect • a: add • c: themes • ctrl+s: search focus "))
 		if m.appConfig != nil && m.appConfig.StartInSearchMode {
 			onStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary)).Bold(true)
 			helpParts = append(helpParts, onStyle.Render("[on]"))
@@ -148,7 +151,7 @@ func (m Model) renderListView() string {
 		}
 		helpParts = append(helpParts, mutedStyle.Render(" • h: help • q: quit"))
 	} else {
-		helpParts = append(helpParts, mutedStyle.Render(" Type to filter • Enter: validate • Tab: switch • ctrl+s: search focus "))
+		helpParts = append(helpParts, mutedStyle.Render("Type to filter • Enter: validate • Tab: switch • ctrl+s: search focus "))
 		if m.appConfig != nil && m.appConfig.StartInSearchMode {
 			onStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary)).Bold(true)
 			helpParts = append(helpParts, onStyle.Render("[on]"))
@@ -157,7 +160,10 @@ func (m Model) renderListView() string {
 		}
 		helpParts = append(helpParts, mutedStyle.Render(" • Esc: exit"))
 	}
-	components = append(components, strings.Join(helpParts, ""))
+
+	// Constrain help text to table width using lipgloss
+	helpStyle := lipgloss.NewStyle().Width(tableWidth).Align(lipgloss.Center)
+	components = append(components, helpStyle.Render(strings.Join(helpParts, "")))
 
 	// Join all components vertically with center alignment
 	mainView := lipgloss.Place(

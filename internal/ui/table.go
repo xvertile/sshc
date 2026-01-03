@@ -294,6 +294,18 @@ func (m *Model) updateTableColumns() {
 	m.table.SetColumns(columns)
 }
 
+// getTableWidth returns the current total width of the table
+func (m *Model) getTableWidth() int {
+	columns := m.table.Columns()
+	totalWidth := 0
+	for _, col := range columns {
+		totalWidth += col.Width
+	}
+	// Add border and separator widths (2 for borders + 3 for column separators)
+	totalWidth += 5
+	return totalWidth
+}
+
 // max returns the maximum of two integers
 func max(a, b int) int {
 	if a > b {
