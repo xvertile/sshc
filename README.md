@@ -107,7 +107,7 @@ Upload public keys to remote hosts.
 - Auto-config update — optionally add IdentityFile to host config after upload
 
 <p align="center">
-  <img src="images/img.png" alt="ssh key management">
+  <img src="images/key.gif" alt="ssh key management">
 </p>
 
 ### Port Forwarding
@@ -143,7 +143,7 @@ Real-time search across hosts by name, hostname, or tags.
 - CLI search — `sshc search prod --tags` for scripting
 
 <p align="center">
-  <img src="images/img.png" alt="search">
+  <img src="images/connection.gif" alt="search">
 </p>
 
 ### Customization

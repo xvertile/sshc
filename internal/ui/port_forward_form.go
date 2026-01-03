@@ -215,158 +215,95 @@ func (m *portForwardModel) updateInputVisibility() {
 
 func (m *portForwardModel) View() string {
 	theme := GetCurrentTheme()
-	var sections []string
+	var b strings.Builder
 
 	// Title
-	title := m.styles.Header.Render("Port Forwarding Setup")
-	sections = append(sections, title)
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary))
+	b.WriteString(titleStyle.Render("PORT FORWARDING"))
+	b.WriteString("\n\n")
 
 	// Host info
-	hostInfo := fmt.Sprintf("Host: %s", m.hostName)
-	sections = append(sections, m.styles.HelpText.Render(hostInfo))
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Accent))
+	b.WriteString(infoStyle.Render(fmt.Sprintf("Host: %s", m.hostName)))
+	b.WriteString("\n\n")
 
-	// Error message
-	if m.err != "" {
-		sections = append(sections, m.styles.Error.Render("Error: "+m.err))
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted)).Width(16)
+	focusedLabelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary)).Width(16)
+	requiredStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+
+	// Helper to render a field
+	renderField := func(label string, inputIndex int, required bool) {
+		l := label
+		if required {
+			l += requiredStyle.Render("*")
+		}
+		if m.focused == inputIndex {
+			b.WriteString(focusedLabelStyle.Render(l))
+			b.WriteString(" ")
+			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary)).Render("> "))
+		} else {
+			b.WriteString(labelStyle.Render(l))
+			b.WriteString("   ")
+		}
+		b.WriteString(m.inputs[inputIndex].View())
+		b.WriteString("\n")
 	}
-
-	// Form fields
-	var fields []string
 
 	// Forward type
-	typeLabel := "Forward Type:"
-	if m.focused == pfTypeInput {
-		typeLabel = m.styles.FocusedLabel.Render(typeLabel)
-	} else {
-		typeLabel = m.styles.Label.Render(typeLabel)
-	}
-	fields = append(fields, typeLabel)
-	fields = append(fields, m.inputs[pfTypeInput].View())
-	fields = append(fields, m.styles.HelpText.Render("Use ←/→ to change type"))
+	renderField("Type", pfTypeInput, false)
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
+	b.WriteString(helpStyle.Render("                    ←/→ to change type"))
+	b.WriteString("\n\n")
 
 	switch m.forwardType {
 	case LocalForward:
-		fields = append(fields, "")
-		fields = append(fields, m.styles.HelpText.Render("Local forwarding: ssh -L [bind_address:]local_port:remote_host:remote_port"))
-		fields = append(fields, "")
-
-		// Local port
-		localPortLabel := "Local Port:"
-		if m.focused == pfLocalPortInput {
-			localPortLabel = m.styles.FocusedLabel.Render(localPortLabel)
-		} else {
-			localPortLabel = m.styles.Label.Render(localPortLabel)
-		}
-		fields = append(fields, localPortLabel)
-		fields = append(fields, m.inputs[pfLocalPortInput].View())
-
-		// Remote host
-		remoteHostLabel := "Remote Host:"
-		if m.focused == pfRemoteHostInput {
-			remoteHostLabel = m.styles.FocusedLabel.Render(remoteHostLabel)
-		} else {
-			remoteHostLabel = m.styles.Label.Render(remoteHostLabel)
-		}
-		fields = append(fields, remoteHostLabel)
-		fields = append(fields, m.inputs[pfRemoteHostInput].View())
-
-		// Remote port
-		remotePortLabel := "Remote Port:"
-		if m.focused == pfRemotePortInput {
-			remotePortLabel = m.styles.FocusedLabel.Render(remotePortLabel)
-		} else {
-			remotePortLabel = m.styles.Label.Render(remotePortLabel)
-		}
-		fields = append(fields, remotePortLabel)
-		fields = append(fields, m.inputs[pfRemotePortInput].View())
+		b.WriteString(helpStyle.Render("ssh -L [bind:]local_port:remote_host:remote_port"))
+		b.WriteString("\n\n")
+		renderField("Local Port", pfLocalPortInput, true)
+		renderField("Remote Host", pfRemoteHostInput, false)
+		renderField("Remote Port", pfRemotePortInput, true)
 
 	case RemoteForward:
-		fields = append(fields, "")
-		fields = append(fields, m.styles.HelpText.Render("Remote forwarding: ssh -R [bind_address:]remote_port:local_host:local_port"))
-		fields = append(fields, "")
-
-		// Remote port
-		remotePortLabel := "Remote Port:"
-		if m.focused == pfLocalPortInput {
-			remotePortLabel = m.styles.FocusedLabel.Render(remotePortLabel)
-		} else {
-			remotePortLabel = m.styles.Label.Render(remotePortLabel)
-		}
-		fields = append(fields, remotePortLabel)
-		fields = append(fields, m.inputs[pfLocalPortInput].View())
-
-		// Local host
-		localHostLabel := "Local Host:"
-		if m.focused == pfRemoteHostInput {
-			localHostLabel = m.styles.FocusedLabel.Render(localHostLabel)
-		} else {
-			localHostLabel = m.styles.Label.Render(localHostLabel)
-		}
-		fields = append(fields, localHostLabel)
-		fields = append(fields, m.inputs[pfRemoteHostInput].View())
-
-		// Local port
-		localPortLabel := "Local Port:"
-		if m.focused == pfRemotePortInput {
-			localPortLabel = m.styles.FocusedLabel.Render(localPortLabel)
-		} else {
-			localPortLabel = m.styles.Label.Render(localPortLabel)
-		}
-		fields = append(fields, localPortLabel)
-		fields = append(fields, m.inputs[pfRemotePortInput].View())
+		b.WriteString(helpStyle.Render("ssh -R [bind:]remote_port:local_host:local_port"))
+		b.WriteString("\n\n")
+		renderField("Remote Port", pfLocalPortInput, true)
+		renderField("Local Host", pfRemoteHostInput, false)
+		renderField("Local Port", pfRemotePortInput, true)
 
 	case DynamicForward:
-		fields = append(fields, "")
-		fields = append(fields, m.styles.HelpText.Render("Dynamic forwarding (SOCKS proxy): ssh -D [bind_address:]port"))
-		fields = append(fields, "")
-
-		// SOCKS port
-		socksPortLabel := "SOCKS Port:"
-		if m.focused == pfLocalPortInput {
-			socksPortLabel = m.styles.FocusedLabel.Render(socksPortLabel)
-		} else {
-			socksPortLabel = m.styles.Label.Render(socksPortLabel)
-		}
-		fields = append(fields, socksPortLabel)
-		fields = append(fields, m.inputs[pfLocalPortInput].View())
+		b.WriteString(helpStyle.Render("ssh -D [bind:]port (SOCKS proxy)"))
+		b.WriteString("\n\n")
+		renderField("SOCKS Port", pfLocalPortInput, true)
 	}
 
-	// Bind address (for all types)
-	fields = append(fields, "")
-	bindLabel := "Bind Address (optional):"
-	if m.focused == pfBindAddressInput {
-		bindLabel = m.styles.FocusedLabel.Render(bindLabel)
-	} else {
-		bindLabel = m.styles.Label.Render(bindLabel)
+	b.WriteString("\n")
+	renderField("Bind Address", pfBindAddressInput, false)
+
+	// Error message
+	if m.err != "" {
+		b.WriteString("\n")
+		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+		b.WriteString(errorStyle.Render("Error: " + m.err))
 	}
-	fields = append(fields, bindLabel)
-	fields = append(fields, m.inputs[pfBindAddressInput].View())
 
-	// Join form fields
-	formContent := lipgloss.JoinVertical(lipgloss.Left, fields...)
-	sections = append(sections, formContent)
+	// Help
+	b.WriteString("\n\n")
+	b.WriteString(helpStyle.Render("↑/↓: navigate • Enter: connect • Esc: cancel"))
 
-	// Help text
-	helpText := " Tab/↓: next field • Shift+Tab/↑: previous field • Enter: connect • Esc: cancel"
-	sections = append(sections, m.styles.HelpText.Render(helpText))
+	content := b.String()
 
-	// Join all sections
-	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
-
-	// Container with primary color border
-	container := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+	// Container with border
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(theme.Primary)).
-		Padding(1, 2).
-		Render(content)
+		Padding(1, 2)
 
-	// Logo outside the container
+	// Logo
 	logo := m.styles.Header.Render(asciiTitle)
 
 	// Stack logo and container
-	fullContent := lipgloss.JoinVertical(lipgloss.Center, logo, "", container)
+	fullContent := lipgloss.JoinVertical(lipgloss.Center, logo, "", box.Render(content))
 
-	// Center the form
 	return lipgloss.Place(
 		m.width,
 		m.height,
