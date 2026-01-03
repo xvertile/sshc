@@ -13,7 +13,7 @@
 <br>
 
 <p align="center">
-  <img src="images/img.png" alt="sshc" width="700">
+  <img src="images/menu.png" alt="sshc">
 </p>
 
 <br>
