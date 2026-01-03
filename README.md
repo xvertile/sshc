@@ -1,8 +1,26 @@
-# sshc
+<p align="center">
+  <h1 align="center">sshc</h1>
+  <p align="center">A modern, interactive terminal UI for managing SSH connections</p>
+</p>
 
-A terminal SSH client with file transfers, port forwarding, and host management.
+<p align="center">
+  <a href="https://github.com/xvertile/sshc/releases"><img src="https://img.shields.io/github/v/release/xvertile/sshc?style=flat-square&color=blue" alt="Release"></a>
+  <a href="https://github.com/xvertile/sshc/blob/main/LICENSE"><img src="https://img.shields.io/github/license/xvertile/sshc?style=flat-square&color=lightgray" alt="License"></a>
+  <a href="https://goreportcard.com/report/github.com/xvertile/sshc"><img src="https://goreportcard.com/badge/github.com/xvertile/sshc?style=flat-square" alt="Go Report Card"></a>
+  <img src="https://img.shields.io/badge/go-1.23+-00ADD8?style=flat-square" alt="Go Version">
+</p>
 
-![showcase](images/showcase.gif)
+<br>
+
+<p align="center">
+  <img src="images/menu.png" alt="sshc" width="700">
+</p>
+
+<br>
+
+SSHC transforms your `~/.ssh/config` into a searchable, navigable interface — letting you connect to servers, transfer files, and manage hosts without memorizing hostnames or typing lengthy commands.
+
+Built with Go and the [Charm](https://charm.sh) ecosystem for a fast, responsive experience that feels native to the terminal.
 
 ---
 
@@ -12,88 +30,20 @@ A terminal SSH client with file transfers, port forwarding, and host management.
 curl -fsSL https://raw.githubusercontent.com/xvertile/sshc/main/install/install.sh | bash
 ```
 
-or via Homebrew:
+**Homebrew**
 
 ```bash
-brew tap xvertile/sshc
-brew install sshc
+brew tap xvertile/sshc && brew install sshc
 ```
 
----
-
-## Usage
+**From source**
 
 ```bash
-sshc                    # interactive mode
-sshc <host>             # direct connection
-sshc transfer <host>    # file transfer
-sshc forward <host>     # port forwarding
+go install github.com/xvertile/sshc@latest
 ```
 
-### Keys
+<br>
 
-```
-j/k, arrows    navigate
-enter          connect
-a              add host
-e              edit host
-d              delete host
-f              port forward
-t              transfer
-/              search
-q              quit
-```
-
----
-
-## Features
-
-**Connection Management**
-- TUI for browsing and connecting to hosts
-- Real-time connectivity status
-- Connection history
-
-**File Transfer**
-- Upload/download via SCP
-- Recursive directory transfers
-- Native file picker integration
-- Remote file browser
-
-**Port Forwarding**
-- Local (-L), remote (-R), dynamic (-D)
-- Saved configurations
-
-**Configuration**
-- Works with ~/.ssh/config
-- Include directive support
-- ProxyJump for bastion hosts
-
----
-
-## Configuration
-
-Uses `~/.ssh/config` by default. Custom configs:
-
-```bash
-sshc -c /path/to/config
-```
-
-Data stored in `~/.config/sshc/`
-
----
-
-## Requirements
-
-- OpenSSH client
-- Go 1.23+ (building from source)
-- Linux file picker: zenity or kdialog
-
----
-
-## Credits
-
-Continuation of [sshm](https://github.com/Gu1llaum-3/sshm) by Guillaume.
-
-## License
-
-MIT
+<p align="center">
+  <img src="images/showcase.gif" alt="showcase" width="700">
+</p>
