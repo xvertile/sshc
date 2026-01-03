@@ -337,40 +337,29 @@ func (m *sshKeyUploadModel) uploadKey(keyPath string) tea.Cmd {
 	})
 }
 
-// uploadPastedKey uploads a pasted key by writing to temp file and using ssh-copy-id (interactive)
+// uploadPastedKey uploads a pasted key using SSH directly (since ssh-copy-id -i requires a private key)
 func (m *sshKeyUploadModel) uploadPastedKey(key string) tea.Cmd {
-	// Create temp file for the key (sync, before running command)
-	tmpFile, err := os.CreateTemp("", "sshc-key-*.pub")
-	if err != nil {
-		return func() tea.Msg {
-			return sshKeyUploadSubmitMsg{err: fmt.Errorf("failed to create temp file: %v", err)}
-		}
-	}
-
-	if _, err := tmpFile.WriteString(key + "\n"); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpFile.Name())
-		return func() tea.Msg {
-			return sshKeyUploadSubmitMsg{err: fmt.Errorf("failed to write key: %v", err)}
-		}
-	}
-	tmpFile.Close()
-
-	var args []string
+	// Build SSH command to append key to authorized_keys
+	// This is the manual equivalent of what ssh-copy-id does
+	var sshArgs []string
 
 	// Add config file if specified
 	if m.configFile != "" {
-		args = append(args, "-F", m.configFile)
+		sshArgs = append(sshArgs, "-F", m.configFile)
 	}
 
-	args = append(args, "-i", tmpFile.Name(), m.hostName)
-	tmpPath := tmpFile.Name()
+	sshArgs = append(sshArgs, m.hostName)
 
-	cmd := exec.Command("ssh-copy-id", args...)
+	// Command to run on remote: create .ssh dir, append key, set permissions
+	remoteCmd := fmt.Sprintf(
+		`mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo %q >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`,
+		key,
+	)
+	sshArgs = append(sshArgs, remoteCmd)
+
+	cmd := exec.Command("ssh", sshArgs...)
 	return tea.ExecProcess(cmd, func(err error) tea.Msg {
-		// Clean up temp file after command completes
-		os.Remove(tmpPath)
-		// For pasted keys, we don't offer config update since it was a temp file
+		// For pasted keys, we don't offer config update since there's no local key file
 		return sshKeyUploadSubmitMsg{err: err, keyPath: ""}
 	})
 }
