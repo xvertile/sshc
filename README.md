@@ -2,7 +2,7 @@
 
 A terminal SSH client with file transfers, port forwarding, and host management.
 
-<video src="images/initial-showcase.mp4" autoplay loop muted playsinline></video>
+![showcase](images/showcase.gif)
 
 ---
 
