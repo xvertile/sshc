@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -12,12 +11,12 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type addFormModel struct {
 	inputs     []textinput.Model
 	focused    int
-	currentTab int // 0 = General, 1 = Advanced
 	err        string
 	styles     Styles
 	success    bool
@@ -25,6 +24,24 @@ type addFormModel struct {
 	height     int
 	configFile string
 }
+
+const (
+	addNameInput = iota
+	addHostnameInput
+	addUserInput
+	addPortInput
+	addIdentityInput
+	addProxyJumpInput
+	addTagsInput
+)
+
+// Messages for communication with parent model
+type addFormSubmitMsg struct {
+	hostname string
+	err      error
+}
+
+type addFormCancelMsg struct{}
 
 // NewAddForm creates a new add form model
 func NewAddForm(hostname string, styles Styles, width, height int, configFile string) *addFormModel {
@@ -37,9 +54,9 @@ func NewAddForm(hostname string, styles Styles, width, height int, configFile st
 
 	// Find default identity file
 	homeDir, _ := os.UserHomeDir()
-	defaultIdentity := filepath.Join(homeDir, ".ssh", "id_rsa")
+	defaultIdentity := ""
 
-	// Check for other common key types
+	// Check for common key types
 	keyTypes := []string{"id_ed25519", "id_ecdsa", "id_rsa"}
 	for _, keyType := range keyTypes {
 		keyPath := filepath.Join(homeDir, ".ssh", keyType)
@@ -49,109 +66,67 @@ func NewAddForm(hostname string, styles Styles, width, height int, configFile st
 		}
 	}
 
-	inputs := make([]textinput.Model, 10) // Increased from 9 to 10 for RequestTTY
+	inputs := make([]textinput.Model, 7)
 
 	// Name input
-	inputs[nameInput] = textinput.New()
-	inputs[nameInput].Placeholder = "server-name"
-	inputs[nameInput].Focus()
-	inputs[nameInput].CharLimit = 50
-	inputs[nameInput].Width = 30
+	inputs[addNameInput] = textinput.New()
+	inputs[addNameInput].Placeholder = "my-server"
+	inputs[addNameInput].Focus()
+	inputs[addNameInput].CharLimit = 50
+	inputs[addNameInput].Width = 40
 	if hostname != "" {
-		inputs[nameInput].SetValue(hostname)
+		inputs[addNameInput].SetValue(hostname)
 	}
 
 	// Hostname input
-	inputs[hostnameInput] = textinput.New()
-	inputs[hostnameInput].Placeholder = "192.168.1.100 or example.com"
-	inputs[hostnameInput].CharLimit = 100
-	inputs[hostnameInput].Width = 30
+	inputs[addHostnameInput] = textinput.New()
+	inputs[addHostnameInput].Placeholder = "192.168.1.100 or example.com"
+	inputs[addHostnameInput].CharLimit = 100
+	inputs[addHostnameInput].Width = 40
 
 	// User input
-	inputs[userInput] = textinput.New()
-	inputs[userInput].Placeholder = defaultUser
-	inputs[userInput].CharLimit = 50
-	inputs[userInput].Width = 30
+	inputs[addUserInput] = textinput.New()
+	inputs[addUserInput].Placeholder = defaultUser
+	inputs[addUserInput].CharLimit = 50
+	inputs[addUserInput].Width = 40
 
 	// Port input
-	inputs[portInput] = textinput.New()
-	inputs[portInput].Placeholder = "22"
-	inputs[portInput].CharLimit = 5
-	inputs[portInput].Width = 30
+	inputs[addPortInput] = textinput.New()
+	inputs[addPortInput].Placeholder = "22"
+	inputs[addPortInput].CharLimit = 5
+	inputs[addPortInput].Width = 40
 
 	// Identity input
-	inputs[identityInput] = textinput.New()
-	inputs[identityInput].Placeholder = defaultIdentity
-	inputs[identityInput].CharLimit = 200
-	inputs[identityInput].Width = 50
+	inputs[addIdentityInput] = textinput.New()
+	if defaultIdentity != "" {
+		inputs[addIdentityInput].Placeholder = defaultIdentity
+	} else {
+		inputs[addIdentityInput].Placeholder = "~/.ssh/id_ed25519"
+	}
+	inputs[addIdentityInput].CharLimit = 200
+	inputs[addIdentityInput].Width = 40
 
 	// ProxyJump input
-	inputs[proxyJumpInput] = textinput.New()
-	inputs[proxyJumpInput].Placeholder = "user@jump-host:port or existing-host-name"
-	inputs[proxyJumpInput].CharLimit = 200
-	inputs[proxyJumpInput].Width = 50
-
-	// SSH Options input
-	inputs[optionsInput] = textinput.New()
-	inputs[optionsInput].Placeholder = "-o Compression=yes -o ServerAliveInterval=60"
-	inputs[optionsInput].CharLimit = 500
-	inputs[optionsInput].Width = 70
+	inputs[addProxyJumpInput] = textinput.New()
+	inputs[addProxyJumpInput].Placeholder = "jump-host or user@host:port"
+	inputs[addProxyJumpInput].CharLimit = 200
+	inputs[addProxyJumpInput].Width = 40
 
 	// Tags input
-	inputs[tagsInput] = textinput.New()
-	inputs[tagsInput].Placeholder = "production, web, database"
-	inputs[tagsInput].CharLimit = 200
-	inputs[tagsInput].Width = 50
-
-	// Remote Command input
-	inputs[remoteCommandInput] = textinput.New()
-	inputs[remoteCommandInput].Placeholder = "ls -la, htop, bash"
-	inputs[remoteCommandInput].CharLimit = 300
-	inputs[remoteCommandInput].Width = 70
-
-	// RequestTTY input
-	inputs[requestTTYInput] = textinput.New()
-	inputs[requestTTYInput].Placeholder = "yes, no, force, auto"
-	inputs[requestTTYInput].CharLimit = 10
-	inputs[requestTTYInput].Width = 30
+	inputs[addTagsInput] = textinput.New()
+	inputs[addTagsInput].Placeholder = "web, production"
+	inputs[addTagsInput].CharLimit = 200
+	inputs[addTagsInput].Width = 40
 
 	return &addFormModel{
 		inputs:     inputs,
-		focused:    nameInput,
-		currentTab: tabGeneral, // Start on General tab
+		focused:    addNameInput,
 		styles:     styles,
 		width:      width,
 		height:     height,
 		configFile: configFile,
 	}
 }
-
-const (
-	tabGeneral = iota
-	tabAdvanced
-)
-
-const (
-	nameInput = iota
-	hostnameInput
-	userInput
-	portInput
-	identityInput
-	proxyJumpInput
-	tagsInput
-	// Advanced tab inputs
-	optionsInput
-	remoteCommandInput
-	requestTTYInput
-)
-
-// Messages for communication with parent model
-type addFormSubmitMsg struct {
-	hostname string
-	err      error
-}
-
-type addFormCancelMsg struct{}
 
 func (m *addFormModel) Init() tea.Cmd {
 	return textinput.Blink
@@ -173,23 +148,27 @@ func (m *addFormModel) Update(msg tea.Msg) (*addFormModel, tea.Cmd) {
 			return m, func() tea.Msg { return addFormCancelMsg{} }
 
 		case "ctrl+s":
-			// Allow submission from any field with Ctrl+S (Save)
 			return m, m.submitForm()
 
-		case "ctrl+j":
-			// Switch to next tab
-			m.currentTab = (m.currentTab + 1) % 2
-			m.focused = m.getFirstInputForTab(m.currentTab)
+		case "tab", "down", "enter":
+			// Move to next field
+			if msg.String() == "enter" && m.focused == addTagsInput {
+				// Submit on enter at last field
+				return m, m.submitForm()
+			}
+			m.focused++
+			if m.focused >= len(m.inputs) {
+				m.focused = 0
+			}
 			return m, m.updateFocus()
 
-		case "ctrl+k":
-			// Switch to previous tab
-			m.currentTab = (m.currentTab - 1 + 2) % 2
-			m.focused = m.getFirstInputForTab(m.currentTab)
+		case "shift+tab", "up":
+			// Move to previous field
+			m.focused--
+			if m.focused < 0 {
+				m.focused = len(m.inputs) - 1
+			}
 			return m, m.updateFocus()
-
-		case "tab", "shift+tab", "enter", "up", "down":
-			return m, m.handleNavigation(msg.String())
 		}
 
 	case addFormSubmitMsg:
@@ -198,46 +177,18 @@ func (m *addFormModel) Update(msg tea.Msg) (*addFormModel, tea.Cmd) {
 		} else {
 			m.success = true
 			m.err = ""
-			// Don't quit here, let parent handle the success
 		}
 		return m, nil
 	}
 
-	// Update inputs
-	cmd := make([]tea.Cmd, len(m.inputs))
-	for i := range m.inputs {
-		m.inputs[i], cmd[i] = m.inputs[i].Update(msg)
-	}
-	cmds = append(cmds, cmd...)
+	// Update focused input
+	var cmd tea.Cmd
+	m.inputs[m.focused], cmd = m.inputs[m.focused].Update(msg)
+	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
 }
 
-// getFirstInputForTab returns the first input index for a given tab
-func (m *addFormModel) getFirstInputForTab(tab int) int {
-	switch tab {
-	case tabGeneral:
-		return nameInput
-	case tabAdvanced:
-		return optionsInput
-	default:
-		return nameInput
-	}
-}
-
-// getInputsForCurrentTab returns the input indices for the current tab
-func (m *addFormModel) getInputsForCurrentTab() []int {
-	switch m.currentTab {
-	case tabGeneral:
-		return []int{nameInput, hostnameInput, userInput, portInput, identityInput, proxyJumpInput, tagsInput}
-	case tabAdvanced:
-		return []int{optionsInput, remoteCommandInput, requestTTYInput}
-	default:
-		return []int{nameInput, hostnameInput, userInput, portInput, identityInput, proxyJumpInput, tagsInput}
-	}
-}
-
-// updateFocus updates focus for inputs
 func (m *addFormModel) updateFocus() tea.Cmd {
 	var cmds []tea.Cmd
 	for i := range m.inputs {
@@ -250,199 +201,150 @@ func (m *addFormModel) updateFocus() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// handleNavigation handles tab/arrow navigation within the current tab
-func (m *addFormModel) handleNavigation(key string) tea.Cmd {
-	currentTabInputs := m.getInputsForCurrentTab()
-
-	// Find current position within the tab
-	currentPos := 0
-	for i, input := range currentTabInputs {
-		if input == m.focused {
-			currentPos = i
-			break
-		}
-	}
-
-	// Handle form submission on last field of Advanced tab
-	if key == "enter" && m.currentTab == tabAdvanced && currentPos == len(currentTabInputs)-1 {
-		return m.submitForm()
-	}
-
-	// Navigate within current tab
-	if key == "up" || key == "shift+tab" {
-		currentPos--
-	} else {
-		currentPos++
-	}
-
-	// Wrap around within current tab
-	if currentPos >= len(currentTabInputs) {
-		currentPos = 0
-	} else if currentPos < 0 {
-		currentPos = len(currentTabInputs) - 1
-	}
-
-	m.focused = currentTabInputs[currentPos]
-	return m.updateFocus()
-}
-
 func (m *addFormModel) View() string {
 	if m.success {
 		return ""
 	}
 
-	// Check if terminal height is sufficient
-	if !m.isHeightSufficient() {
-		return m.renderHeightWarning()
-	}
-
+	theme := GetCurrentTheme()
 	var b strings.Builder
 
-	b.WriteString(m.styles.FormTitle.Render("Add SSH Host Configuration"))
+	// Title
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary))
+	b.WriteString(titleStyle.Render("ADD SSH HOST"))
 	b.WriteString("\n\n")
 
-	// Render tabs
-	b.WriteString(m.renderTabs())
+	// Fields
+	fields := []struct {
+		index    int
+		label    string
+		required bool
+	}{
+		{addNameInput, "Name", true},
+		{addHostnameInput, "Hostname", true},
+		{addUserInput, "User", false},
+		{addPortInput, "Port", false},
+		{addIdentityInput, "Identity File", false},
+		{addProxyJumpInput, "ProxyJump", false},
+		{addTagsInput, "Tags", false},
+	}
+
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted)).Width(14)
+	focusedLabelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary)).Width(14)
+	requiredStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+
+	for _, field := range fields {
+		// Label
+		label := field.label
+		if field.required {
+			label += requiredStyle.Render("*")
+		}
+
+		if m.focused == field.index {
+			b.WriteString(focusedLabelStyle.Render(label))
+			b.WriteString(" ")
+			// Show cursor indicator
+			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary)).Render("> "))
+		} else {
+			b.WriteString(labelStyle.Render(label))
+			b.WriteString("   ")
+		}
+
+		// Input
+		b.WriteString(m.inputs[field.index].View())
+		b.WriteString("\n")
+	}
+
+	// Error message
+	if m.err != "" {
+		b.WriteString("\n")
+		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+		b.WriteString(errorStyle.Render("Error: " + m.err))
+	}
+
+	// Help
 	b.WriteString("\n\n")
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
+	b.WriteString(helpStyle.Render("↑/↓: navigate • Enter: next/submit • Ctrl+S: save • Esc: cancel"))
 
-	// Render current tab content
-	switch m.currentTab {
-	case tabGeneral:
-		b.WriteString(m.renderGeneralTab())
-	case tabAdvanced:
-		b.WriteString(m.renderAdvancedTab())
-	}
+	content := b.String()
 
-	if m.err != "" {
-		b.WriteString(m.styles.Error.Render("Error: " + m.err))
-		b.WriteString("\n\n")
-	}
+	// Container
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(theme.Primary)).
+		Padding(1, 2)
 
-	// Help text
-	b.WriteString(m.styles.FormHelp.Render("Tab/Shift+Tab: navigate • Ctrl+J/K: switch tabs"))
-	b.WriteString("\n")
-	b.WriteString(m.styles.FormHelp.Render("Enter on last field: submit • Ctrl+S: save • Ctrl+C/Esc: cancel"))
-	b.WriteString("\n")
-	b.WriteString(m.styles.FormHelp.Render("* Required fields"))
+	// Logo
+	logo := m.styles.Header.Render(asciiTitle)
 
-	return b.String()
+	// Stack logo and container
+	fullContent := lipgloss.JoinVertical(lipgloss.Center, logo, "", box.Render(content))
+
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		fullContent,
+	)
 }
 
-// getMinimumHeight calculates the minimum height needed to display the form
-func (m *addFormModel) getMinimumHeight() int {
-	// Title: 1 line + 2 newlines = 3
-	titleLines := 3
-	// Tabs: 1 line + 2 newlines = 3
-	tabLines := 3
-	// Fields in current tab
-	var fieldsCount int
-	if m.currentTab == tabGeneral {
-		fieldsCount = 7 // 7 fields in general tab
-	} else {
-		fieldsCount = 3 // 3 fields in advanced tab
-	}
-	// Each field: label (1) + input (1) + spacing (2) = 4 lines per field, but let's be more conservative
-	fieldsLines := fieldsCount * 3 // Reduced from 4 to 3
-	// Help text: 3 lines
-	helpLines := 3
-	// Error message space when needed: 2 lines
-	errorLines := 0 // Only count when there's actually an error
-	if m.err != "" {
-		errorLines = 2
-	}
+func (m *addFormModel) submitForm() tea.Cmd {
+	return func() tea.Msg {
+		// Get values
+		name := strings.TrimSpace(m.inputs[addNameInput].Value())
+		hostname := strings.TrimSpace(m.inputs[addHostnameInput].Value())
+		user := strings.TrimSpace(m.inputs[addUserInput].Value())
+		port := strings.TrimSpace(m.inputs[addPortInput].Value())
+		identity := strings.TrimSpace(m.inputs[addIdentityInput].Value())
+		proxyJump := strings.TrimSpace(m.inputs[addProxyJumpInput].Value())
 
-	return titleLines + tabLines + fieldsLines + helpLines + errorLines + 1 // +1 minimal safety margin
-}
-
-// isHeightSufficient checks if the current terminal height is sufficient
-func (m *addFormModel) isHeightSufficient() bool {
-	return m.height >= m.getMinimumHeight()
-}
-
-// renderHeightWarning renders a warning message when height is insufficient
-func (m *addFormModel) renderHeightWarning() string {
-	required := m.getMinimumHeight()
-	current := m.height
-
-	warning := m.styles.ErrorText.Render("[!] Terminal height is too small!")
-	details := m.styles.FormField.Render(fmt.Sprintf("Current: %d lines, Required: %d lines", current, required))
-	instruction := m.styles.FormHelp.Render("Please resize your terminal window and try again.")
-	instruction2 := m.styles.FormHelp.Render("Press Ctrl+C to cancel or resize terminal window.")
-
-	return warning + "\n\n" + details + "\n\n" + instruction + "\n" + instruction2
-}
-
-// renderTabs renders the tab headers
-func (m *addFormModel) renderTabs() string {
-	var generalTab, advancedTab string
-
-	if m.currentTab == tabGeneral {
-		generalTab = m.styles.FocusedLabel.Render("[ General ]")
-		advancedTab = m.styles.FormField.Render("  Advanced  ")
-	} else {
-		generalTab = m.styles.FormField.Render("  General  ")
-		advancedTab = m.styles.FocusedLabel.Render("[ Advanced ]")
-	}
-
-	return generalTab + "  " + advancedTab
-}
-
-// renderGeneralTab renders the general tab content
-func (m *addFormModel) renderGeneralTab() string {
-	var b strings.Builder
-
-	fields := []struct {
-		index int
-		label string
-	}{
-		{nameInput, "Host Name *"},
-		{hostnameInput, "Hostname/IP *"},
-		{userInput, "User"},
-		{portInput, "Port"},
-		{identityInput, "Identity File"},
-		{proxyJumpInput, "ProxyJump"},
-		{tagsInput, "Tags (comma-separated)"},
-	}
-
-	for _, field := range fields {
-		fieldStyle := m.styles.FormField
-		if m.focused == field.index {
-			fieldStyle = m.styles.FocusedLabel
+		// Set defaults
+		if user == "" {
+			user = m.inputs[addUserInput].Placeholder
 		}
-		b.WriteString(fieldStyle.Render(field.label))
-		b.WriteString("\n")
-		b.WriteString(m.inputs[field.index].View())
-		b.WriteString("\n\n")
-	}
-
-	return b.String()
-}
-
-// renderAdvancedTab renders the advanced tab content
-func (m *addFormModel) renderAdvancedTab() string {
-	var b strings.Builder
-
-	fields := []struct {
-		index int
-		label string
-	}{
-		{optionsInput, "SSH Options"},
-		{remoteCommandInput, "Remote Command"},
-		{requestTTYInput, "Request TTY"},
-	}
-
-	for _, field := range fields {
-		fieldStyle := m.styles.FormField
-		if m.focused == field.index {
-			fieldStyle = m.styles.FocusedLabel
+		if port == "" {
+			port = "22"
 		}
-		b.WriteString(fieldStyle.Render(field.label))
-		b.WriteString("\n")
-		b.WriteString(m.inputs[field.index].View())
-		b.WriteString("\n\n")
-	}
 
-	return b.String()
+		// Validate required fields
+		if err := validation.ValidateHost(name, hostname, port, identity); err != nil {
+			return addFormSubmitMsg{err: err}
+		}
+
+		// Parse tags
+		tagsStr := strings.TrimSpace(m.inputs[addTagsInput].Value())
+		var tags []string
+		if tagsStr != "" {
+			for _, tag := range strings.Split(tagsStr, ",") {
+				tag = strings.TrimSpace(tag)
+				if tag != "" {
+					tags = append(tags, tag)
+				}
+			}
+		}
+
+		// Create host configuration
+		host := config.SSHHost{
+			Name:      name,
+			Hostname:  hostname,
+			User:      user,
+			Port:      port,
+			Identity:  identity,
+			ProxyJump: proxyJump,
+			Tags:      tags,
+		}
+
+		// Add to config
+		var err error
+		if m.configFile != "" {
+			err = config.AddSSHHostToFile(host, m.configFile)
+		} else {
+			err = config.AddSSHHost(host)
+		}
+		return addFormSubmitMsg{hostname: name, err: err}
+	}
 }
 
 // Standalone wrapper for add form
@@ -478,67 +380,4 @@ func RunAddForm(hostname string, configFile string) error {
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	return err
-}
-
-func (m *addFormModel) submitForm() tea.Cmd {
-	return func() tea.Msg {
-		// Get values
-		name := strings.TrimSpace(m.inputs[nameInput].Value())
-		hostname := strings.TrimSpace(m.inputs[hostnameInput].Value())
-		user := strings.TrimSpace(m.inputs[userInput].Value())
-		port := strings.TrimSpace(m.inputs[portInput].Value())
-		identity := strings.TrimSpace(m.inputs[identityInput].Value())
-		proxyJump := strings.TrimSpace(m.inputs[proxyJumpInput].Value())
-		options := strings.TrimSpace(m.inputs[optionsInput].Value())
-		remoteCommand := strings.TrimSpace(m.inputs[remoteCommandInput].Value())
-		requestTTY := strings.TrimSpace(m.inputs[requestTTYInput].Value())
-
-		// Set defaults
-		if user == "" {
-			user = m.inputs[userInput].Placeholder
-		}
-		if port == "" {
-			port = "22"
-		}
-		// Do not auto-fill identity with placeholder if left empty; keep it empty so it's optional
-
-		// Validate all fields
-		if err := validation.ValidateHost(name, hostname, port, identity); err != nil {
-			return addFormSubmitMsg{err: err}
-		}
-
-		tagsStr := strings.TrimSpace(m.inputs[tagsInput].Value())
-		var tags []string
-		if tagsStr != "" {
-			for _, tag := range strings.Split(tagsStr, ",") {
-				tag = strings.TrimSpace(tag)
-				if tag != "" {
-					tags = append(tags, tag)
-				}
-			}
-		}
-
-		// Create host configuration
-		host := config.SSHHost{
-			Name:          name,
-			Hostname:      hostname,
-			User:          user,
-			Port:          port,
-			Identity:      identity,
-			ProxyJump:     proxyJump,
-			Options:       config.ParseSSHOptionsFromCommand(options),
-			RemoteCommand: remoteCommand,
-			RequestTTY:    requestTTY,
-			Tags:          tags,
-		}
-
-		// Add to config
-		var err error
-		if m.configFile != "" {
-			err = config.AddSSHHostToFile(host, m.configFile)
-		} else {
-			err = config.AddSSHHost(host)
-		}
-		return addFormSubmitMsg{hostname: name, err: err}
-	}
 }
