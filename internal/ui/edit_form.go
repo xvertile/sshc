@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 const (
@@ -389,15 +390,32 @@ func (m *editFormModel) isHeightSufficient() bool {
 
 // renderHeightWarning renders a warning message when height is insufficient
 func (m *editFormModel) renderHeightWarning() string {
+	theme := GetCurrentTheme()
 	required := m.getMinimumHeight()
 	current := m.height
 
-	warning := m.styles.ErrorText.Render("[!] Terminal height is too small!")
-	details := m.styles.FormField.Render(fmt.Sprintf("Current: %d lines, Required: %d lines", current, required))
-	instruction := m.styles.FormHelp.Render("Please resize your terminal window and try again.")
-	instruction2 := m.styles.FormHelp.Render("Press Ctrl+C to cancel or resize terminal window.")
+	errorStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("203"))
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
 
-	return warning + "\n\n" + details + "\n\n" + instruction + "\n" + instruction2
+	warning := errorStyle.Render("[!] Terminal height is too small!")
+	details := infoStyle.Render(fmt.Sprintf("Current: %d lines, Required: %d lines", current, required))
+	instruction := infoStyle.Render("Please resize your terminal window.")
+	instruction2 := infoStyle.Render("Press Ctrl+C to cancel.")
+
+	content := warning + "\n\n" + details + "\n\n" + instruction + "\n" + instruction2
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("203")).
+		Padding(1, 2)
+
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		box.Render(content),
+	)
 }
 
 func (m *editFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -484,84 +502,113 @@ func (m *editFormModel) View() string {
 		return m.renderHeightWarning()
 	}
 
+	theme := GetCurrentTheme()
 	var b strings.Builder
 
-	if m.err != "" {
-		b.WriteString(m.styles.Error.Render("Error: " + m.err))
+	// Title
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary))
+	b.WriteString(titleStyle.Render("EDIT SSH HOST"))
+	b.WriteString("\n\n")
+
+	// Config file info
+	if m.host != nil && m.host.SourceFile != "" {
+		infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
+		b.WriteString(infoStyle.Render("Config: " + formatConfigFile(m.host.SourceFile)))
 		b.WriteString("\n\n")
 	}
 
-	b.WriteString(m.styles.Header.Render("Edit SSH Host"))
-	b.WriteString("\n\n")
-
-	if m.host != nil && m.host.SourceFile != "" {
-		labelStyle := m.styles.FormField
-		pathStyle := m.styles.FormField
-		configInfo := labelStyle.Render("Config file: ") + pathStyle.Render(formatConfigFile(m.host.SourceFile))
-		b.WriteString(configInfo)
-	}
-
-	b.WriteString("\n\n")
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted)).Width(16)
+	focusedLabelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary)).Width(16)
+	requiredStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
 
 	// Host Names Section
-	b.WriteString(m.styles.FormTitle.Render("Host Names"))
-	b.WriteString("\n\n")
+	sectionStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Accent))
+	b.WriteString(sectionStyle.Render("Host Names"))
+	b.WriteString("\n")
 
 	for i, hostInput := range m.hostInputs {
-		hostStyle := m.styles.FormField
+		label := fmt.Sprintf("Name %d", i+1) + requiredStyle.Render("*")
 		if m.focusArea == focusAreaHosts && m.focused == i {
-			hostStyle = m.styles.FocusedLabel
+			b.WriteString(focusedLabelStyle.Render(label))
+			b.WriteString(" ")
+			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary)).Render("> "))
+		} else {
+			b.WriteString(labelStyle.Render(label))
+			b.WriteString("   ")
 		}
-		b.WriteString(hostStyle.Render(fmt.Sprintf("Host Name %d *", i+1)))
-		b.WriteString("\n")
 		b.WriteString(hostInput.View())
-		b.WriteString("\n\n")
+		b.WriteString("\n")
 	}
 
-	// Properties Section
-	b.WriteString(m.styles.FormTitle.Render("Common Properties"))
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 
-	// Render tabs for properties
+	// Tabs
 	b.WriteString(m.renderEditTabs())
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 
 	// Render current tab content
 	switch m.currentTab {
-	case 0: // General
+	case 0:
 		b.WriteString(m.renderEditGeneralTab())
-	case 1: // Advanced
+	case 1:
 		b.WriteString(m.renderEditAdvancedTab())
 	}
 
+	// Error message
 	if m.err != "" {
-		b.WriteString(m.styles.Error.Render("Error: " + m.err))
-		b.WriteString("\n\n")
+		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+		b.WriteString(errorStyle.Render("Error: " + m.err))
+		b.WriteString("\n")
 	}
 
-	// Show different help based on number of hosts
+	// Help
+	b.WriteString("\n")
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
 	if len(m.hostInputs) > 1 {
-		b.WriteString(m.styles.FormHelp.Render("Tab/↑↓/Enter: navigate • Ctrl+J/K: switch tabs • Ctrl+A: add host • Ctrl+D: delete host"))
-		b.WriteString("\n")
+		b.WriteString(helpStyle.Render("↑/↓: navigate • Ctrl+J/K: tabs • Ctrl+A: add • Ctrl+D: delete"))
 	} else {
-		b.WriteString(m.styles.FormHelp.Render("Tab/↑↓/Enter: navigate • Ctrl+J/K: switch tabs • Ctrl+A: add host"))
-		b.WriteString("\n")
+		b.WriteString(helpStyle.Render("↑/↓: navigate • Ctrl+J/K: tabs • Ctrl+A: add host"))
 	}
-	b.WriteString(m.styles.FormHelp.Render("Ctrl+S: save • Ctrl+C/Esc: cancel • * Required fields"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("Ctrl+S: save • Esc: cancel"))
 
-	return b.String()
+	content := b.String()
+
+	// Container with border
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(theme.Primary)).
+		Padding(1, 2)
+
+	// Logo
+	logo := m.styles.Header.Render(asciiTitle)
+
+	// Stack logo and container
+	fullContent := lipgloss.JoinVertical(lipgloss.Center, logo, "", box.Render(content))
+
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		fullContent,
+	)
 }
 
 // renderEditTabs renders the tab headers for properties
 func (m *editFormModel) renderEditTabs() string {
-	var generalTab, advancedTab string
+	theme := GetCurrentTheme()
 
+	activeTab := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary))
+	inactiveTab := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
+
+	var generalTab, advancedTab string
 	if m.currentTab == 0 {
-		generalTab = m.styles.FocusedLabel.Render("[ General ]")
-		advancedTab = m.styles.FormField.Render("  Advanced  ")
+		generalTab = activeTab.Render("[ General ]")
+		advancedTab = inactiveTab.Render("  Advanced  ")
 	} else {
-		generalTab = m.styles.FormField.Render("  General  ")
-		advancedTab = m.styles.FocusedLabel.Render("[ Advanced ]")
+		generalTab = inactiveTab.Render("  General  ")
+		advancedTab = activeTab.Render("[ Advanced ]")
 	}
 
 	return generalTab + "  " + advancedTab
@@ -569,29 +616,42 @@ func (m *editFormModel) renderEditTabs() string {
 
 // renderEditGeneralTab renders the general tab content for properties
 func (m *editFormModel) renderEditGeneralTab() string {
+	theme := GetCurrentTheme()
 	var b strings.Builder
 
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted)).Width(16)
+	focusedLabelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary)).Width(16)
+	requiredStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+
 	fields := []struct {
-		index int
-		label string
+		index    int
+		label    string
+		required bool
 	}{
-		{0, "Hostname/IP *"},
-		{1, "User"},
-		{2, "Port"},
-		{3, "Identity File"},
-		{4, "Proxy Jump"},
-		{6, "Tags (comma-separated)"},
+		{0, "Hostname", true},
+		{1, "User", false},
+		{2, "Port", false},
+		{3, "Identity File", false},
+		{4, "ProxyJump", false},
+		{6, "Tags", false},
 	}
 
 	for _, field := range fields {
-		fieldStyle := m.styles.FormField
-		if m.focusArea == focusAreaProperties && m.focused == field.index {
-			fieldStyle = m.styles.FocusedLabel
+		label := field.label
+		if field.required {
+			label += requiredStyle.Render("*")
 		}
-		b.WriteString(fieldStyle.Render(field.label))
-		b.WriteString("\n")
+
+		if m.focusArea == focusAreaProperties && m.focused == field.index {
+			b.WriteString(focusedLabelStyle.Render(label))
+			b.WriteString(" ")
+			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary)).Render("> "))
+		} else {
+			b.WriteString(labelStyle.Render(label))
+			b.WriteString("   ")
+		}
 		b.WriteString(m.inputs[field.index].View())
-		b.WriteString("\n\n")
+		b.WriteString("\n")
 	}
 
 	return b.String()
@@ -599,7 +659,11 @@ func (m *editFormModel) renderEditGeneralTab() string {
 
 // renderEditAdvancedTab renders the advanced tab content for properties
 func (m *editFormModel) renderEditAdvancedTab() string {
+	theme := GetCurrentTheme()
 	var b strings.Builder
+
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted)).Width(16)
+	focusedLabelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary)).Width(16)
 
 	fields := []struct {
 		index int
@@ -611,14 +675,16 @@ func (m *editFormModel) renderEditAdvancedTab() string {
 	}
 
 	for _, field := range fields {
-		fieldStyle := m.styles.FormField
 		if m.focusArea == focusAreaProperties && m.focused == field.index {
-			fieldStyle = m.styles.FocusedLabel
+			b.WriteString(focusedLabelStyle.Render(field.label))
+			b.WriteString(" ")
+			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary)).Render("> "))
+		} else {
+			b.WriteString(labelStyle.Render(field.label))
+			b.WriteString("   ")
 		}
-		b.WriteString(fieldStyle.Render(field.label))
-		b.WriteString("\n")
 		b.WriteString(m.inputs[field.index].View())
-		b.WriteString("\n\n")
+		b.WriteString("\n")
 	}
 
 	return b.String()
