@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/xvertile/sshc/internal/history"
 	"github.com/xvertile/sshc/internal/transfer"
@@ -16,32 +18,35 @@ import (
 type QuickTransferState int
 
 const (
-	QTStateChooseDirection QuickTransferState = iota
-	QTStateChooseUploadType   // File or Folder selection (only for uploads)
-	QTStateChooseDownloadType // File or Folder selection (for downloads)
+	QTStateChooseDirection    QuickTransferState = iota
+	QTStateChooseUploadType                      // File or Folder selection (only for uploads)
+	QTStateChooseDownloadType                    // File or Folder selection (for downloads)
 	QTStateSelectingLocal
 	QTStateSelectingRemote
 	QTStateTransferring
+	QTStateError // New state for error with retry option
 	QTStateDone
 )
 
 // quickTransferModel is a streamlined transfer UI
 type quickTransferModel struct {
-	state            QuickTransferState
-	direction        transfer.Direction
-	uploadType       UploadType // File or Folder (reuse from transfer_form.go)
-	downloadType     UploadType // File or Folder for downloads (reuses UploadType enum)
-	selectedIdx      int        // 0 = upload/file, 1 = download/folder (for arrow key nav)
-	hostName         string
-	configFile       string
-	localPath        string
-	remotePath       string
-	styles           Styles
-	width            int
-	height           int
-	err              string
-	historyManager   *history.HistoryManager
-	runningTransfer  *transfer.RunningTransfer // For cancellation
+	state           QuickTransferState
+	direction       transfer.Direction
+	uploadType      UploadType // File or Folder (reuse from transfer_form.go)
+	downloadType    UploadType // File or Folder for downloads (reuses UploadType enum)
+	selectedIdx     int        // 0 = upload/file, 1 = download/folder (for arrow key nav)
+	hostName        string
+	configFile      string
+	localPath       string
+	remotePath      string
+	styles          Styles
+	width           int
+	height          int
+	err             string
+	historyManager  *history.HistoryManager
+	runningTransfer *transfer.RunningTransfer // For cancellation
+	progressFrame   int                       // For animated progress bar
+	retryCount      int                       // Number of retry attempts
 }
 
 // quickTransferDoneMsg signals transfer complete
@@ -52,6 +57,9 @@ type quickTransferDoneMsg struct {
 
 // quickTransferCancelMsg signals cancellation
 type quickTransferCancelMsg struct{}
+
+// quickTransferTickMsg for progress bar animation
+type quickTransferTickMsg struct{}
 
 // quickLocalPickedMsg is sent when local file is picked
 type quickLocalPickedMsg struct {
@@ -91,8 +99,23 @@ func (m *quickTransferModel) Init() tea.Cmd {
 	return nil
 }
 
+// tickCmd returns a command that sends a tick message after a short delay
+func tickCmd() tea.Cmd {
+	return tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+		return quickTransferTickMsg{}
+	})
+}
+
 func (m *quickTransferModel) Update(msg tea.Msg) (*quickTransferModel, tea.Cmd) {
 	switch msg := msg.(type) {
+	case quickTransferTickMsg:
+		// Advance progress animation frame
+		if m.state == QTStateTransferring {
+			m.progressFrame++
+			return m, tickCmd()
+		}
+		return m, nil
+
 	case quickLocalPickedMsg:
 		if !msg.selected {
 			// Cancelled - go back or exit
@@ -103,7 +126,8 @@ func (m *quickTransferModel) Update(msg tea.Msg) (*quickTransferModel, tea.Cmd) 
 		if m.direction == transfer.Download {
 			// For downloads: both paths set (remote first, then local), execute transfer
 			m.state = QTStateTransferring
-			return m, m.executeTransfer()
+			m.progressFrame = 0
+			return m, tea.Batch(m.executeTransfer(), tickCmd())
 		}
 		// For uploads: local picked, now ask for remote destination
 		m.state = QTStateSelectingRemote
@@ -123,12 +147,13 @@ func (m *quickTransferModel) Update(msg tea.Msg) (*quickTransferModel, tea.Cmd) 
 		}
 		// For uploads: both paths set, execute transfer
 		m.state = QTStateTransferring
-		return m, m.executeTransfer()
+		m.progressFrame = 0
+		return m, tea.Batch(m.executeTransfer(), tickCmd())
 
 	case quickTransferDoneMsg:
 		if msg.err != nil {
 			m.err = msg.err.Error()
-			m.state = QTStateDone
+			m.state = QTStateError // Go to error state for retry option
 			return m, nil
 		}
 		m.state = QTStateDone
@@ -279,6 +304,20 @@ func (m *quickTransferModel) Update(msg tea.Msg) (*quickTransferModel, tea.Cmd) 
 			// Transfer in progress - handled at top with ctrl+c
 			break
 
+		case QTStateError:
+			// Error state - allow retry or exit
+			switch msg.String() {
+			case "r", "R":
+				// Retry the transfer
+				m.err = ""
+				m.retryCount++
+				m.progressFrame = 0
+				m.state = QTStateTransferring
+				return m, tea.Batch(m.executeTransfer(), tickCmd())
+			case "q", "esc":
+				return m, func() tea.Msg { return quickTransferCancelMsg{} }
+			}
+
 		case QTStateDone:
 			// Any key exits
 			return m, func() tea.Msg { return quickTransferCancelMsg{} }
@@ -396,6 +435,51 @@ func (m *quickTransferModel) executeTransfer() tea.Cmd {
 	}
 }
 
+// renderProgressBar creates an animated progress bar
+func (m *quickTransferModel) renderProgressBar(width int) string {
+	theme := GetCurrentTheme()
+
+	// Create a sliding animation effect
+	barWidth := width - 2 // Account for brackets
+	pos := m.progressFrame % (barWidth * 2)
+
+	// Create the animation - a block that moves back and forth
+	var bar strings.Builder
+	bar.WriteString("[")
+
+	// Calculate the position of the animated block (3 chars wide)
+	blockWidth := 5
+	var blockPos int
+	if pos < barWidth {
+		blockPos = pos
+	} else {
+		blockPos = (barWidth * 2) - pos
+	}
+
+	// Clamp block position
+	if blockPos > barWidth-blockWidth {
+		blockPos = barWidth - blockWidth
+	}
+	if blockPos < 0 {
+		blockPos = 0
+	}
+
+	// Build the bar
+	activeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
+
+	for i := 0; i < barWidth; i++ {
+		if i >= blockPos && i < blockPos+blockWidth {
+			bar.WriteString(activeStyle.Render("█"))
+		} else {
+			bar.WriteString(dimStyle.Render("░"))
+		}
+	}
+
+	bar.WriteString("]")
+	return bar.String()
+}
+
 func (m *quickTransferModel) View() string {
 	theme := GetCurrentTheme()
 	var sections []string
@@ -406,118 +490,136 @@ func (m *quickTransferModel) View() string {
 	sections = append(sections, m.styles.HelpText.Render(fmt.Sprintf("Host: %s", m.hostName)))
 	sections = append(sections, "")
 
-	if m.err != "" {
-		sections = append(sections, m.styles.Error.Render("Error: "+m.err))
+	switch m.state {
+	case QTStateChooseDirection:
+		sections = append(sections, m.styles.Label.Render("What would you like to do?"))
 		sections = append(sections, "")
-		sections = append(sections, m.styles.HelpText.Render("Press any key to close"))
-	} else {
-		switch m.state {
-		case QTStateChooseDirection:
-			sections = append(sections, m.styles.Label.Render("What would you like to do?"))
-			sections = append(sections, "")
 
-			var uploadBtn, downloadBtn string
-			if m.selectedIdx == 0 {
-				uploadBtn = m.styles.ActiveTab.Render("  ↑ Upload  ")
-				downloadBtn = m.styles.InactiveTab.Render("  ↓ Download  ")
-			} else {
-				uploadBtn = m.styles.InactiveTab.Render("  ↑ Upload  ")
-				downloadBtn = m.styles.ActiveTab.Render("  ↓ Download  ")
-			}
-			buttons := lipgloss.JoinHorizontal(lipgloss.Center, uploadBtn, "    ", downloadBtn)
-			sections = append(sections, buttons)
-			sections = append(sections, "")
-			sections = append(sections, m.styles.HelpText.Render("←/→ or Tab: switch • Enter: confirm • Esc: cancel"))
-
-		case QTStateChooseUploadType:
-			sections = append(sections, m.styles.Label.Render("What do you want to upload?"))
-			sections = append(sections, "")
-
-			var fileBtn, folderBtn string
-			if m.selectedIdx == 0 {
-				fileBtn = m.styles.ActiveTab.Render("  File  ")
-				folderBtn = m.styles.InactiveTab.Render("  Folder  ")
-			} else {
-				fileBtn = m.styles.InactiveTab.Render("  File  ")
-				folderBtn = m.styles.ActiveTab.Render("  Folder  ")
-			}
-			buttons := lipgloss.JoinHorizontal(lipgloss.Center, fileBtn, "    ", folderBtn)
-			sections = append(sections, buttons)
-			sections = append(sections, "")
-			sections = append(sections, m.styles.HelpText.Render("←/→ or Tab: switch • Enter: confirm • Esc: back"))
-
-		case QTStateChooseDownloadType:
-			sections = append(sections, m.styles.Label.Render("What do you want to download?"))
-			sections = append(sections, "")
-
-			var fileBtn, folderBtn string
-			if m.selectedIdx == 0 {
-				fileBtn = m.styles.ActiveTab.Render("  File  ")
-				folderBtn = m.styles.InactiveTab.Render("  Folder  ")
-			} else {
-				fileBtn = m.styles.InactiveTab.Render("  File  ")
-				folderBtn = m.styles.ActiveTab.Render("  Folder  ")
-			}
-			buttons := lipgloss.JoinHorizontal(lipgloss.Center, fileBtn, "    ", folderBtn)
-			sections = append(sections, buttons)
-			sections = append(sections, "")
-			sections = append(sections, m.styles.HelpText.Render("←/→ or Tab: switch • Enter: confirm • Esc: back"))
-
-		case QTStateSelectingLocal:
-			if m.direction == transfer.Upload {
-				if m.uploadType == UploadFolder {
-					sections = append(sections, m.styles.Label.Render("Select folder to upload..."))
-				} else {
-					sections = append(sections, m.styles.Label.Render("Select file to upload..."))
-				}
-			} else {
-				sections = append(sections, m.styles.Label.Render("Select download destination..."))
-			}
-			sections = append(sections, "")
-			loadingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-			sections = append(sections, loadingStyle.Render("Opening file picker..."))
-
-		case QTStateSelectingRemote:
-			if m.direction == transfer.Upload {
-				sections = append(sections, m.styles.Label.Render("Select remote destination..."))
-			} else {
-				if m.downloadType == UploadFolder {
-					sections = append(sections, m.styles.Label.Render("Select remote folder to download..."))
-				} else {
-					sections = append(sections, m.styles.Label.Render("Select remote file to download..."))
-				}
-			}
-			sections = append(sections, "")
-			if m.localPath != "" {
-				sections = append(sections, m.styles.HelpText.Render("Local: "+m.localPath))
-				sections = append(sections, "")
-			}
-			loadingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-			sections = append(sections, loadingStyle.Render("Opening remote browser..."))
-
-		case QTStateTransferring:
-			direction := "Uploading"
-			if m.direction == transfer.Download {
-				if m.downloadType == UploadFolder {
-					direction = "Downloading folder"
-				} else {
-					direction = "Downloading"
-				}
-			}
-			sections = append(sections, m.styles.Label.Render(direction+"..."))
-			sections = append(sections, "")
-			sections = append(sections, m.styles.HelpText.Render("Local: "+m.localPath))
-			sections = append(sections, m.styles.HelpText.Render("Remote: "+m.remotePath))
-			sections = append(sections, "")
-			loadingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-			sections = append(sections, loadingStyle.Render("Transfer in progress..."))
-
-		case QTStateDone:
-			sections = append(sections, m.styles.Label.Render("[OK] Transfer complete!"))
-			sections = append(sections, "")
-			sections = append(sections, m.styles.HelpText.Render("Local: "+m.localPath))
-			sections = append(sections, m.styles.HelpText.Render("Remote: "+m.remotePath))
+		var uploadBtn, downloadBtn string
+		if m.selectedIdx == 0 {
+			uploadBtn = m.styles.ActiveTab.Render("  ↑ Upload  ")
+			downloadBtn = m.styles.InactiveTab.Render("  ↓ Download  ")
+		} else {
+			uploadBtn = m.styles.InactiveTab.Render("  ↑ Upload  ")
+			downloadBtn = m.styles.ActiveTab.Render("  ↓ Download  ")
 		}
+		buttons := lipgloss.JoinHorizontal(lipgloss.Center, uploadBtn, "    ", downloadBtn)
+		sections = append(sections, buttons)
+		sections = append(sections, "")
+		sections = append(sections, m.styles.HelpText.Render("←/→ or Tab: switch • Enter: confirm • Esc: cancel"))
+
+	case QTStateChooseUploadType:
+		sections = append(sections, m.styles.Label.Render("What do you want to upload?"))
+		sections = append(sections, "")
+
+		var fileBtn, folderBtn string
+		if m.selectedIdx == 0 {
+			fileBtn = m.styles.ActiveTab.Render("  File  ")
+			folderBtn = m.styles.InactiveTab.Render("  Folder  ")
+		} else {
+			fileBtn = m.styles.InactiveTab.Render("  File  ")
+			folderBtn = m.styles.ActiveTab.Render("  Folder  ")
+		}
+		buttons := lipgloss.JoinHorizontal(lipgloss.Center, fileBtn, "    ", folderBtn)
+		sections = append(sections, buttons)
+		sections = append(sections, "")
+		sections = append(sections, m.styles.HelpText.Render("←/→ or Tab: switch • Enter: confirm • Esc: back"))
+
+	case QTStateChooseDownloadType:
+		sections = append(sections, m.styles.Label.Render("What do you want to download?"))
+		sections = append(sections, "")
+
+		var fileBtn, folderBtn string
+		if m.selectedIdx == 0 {
+			fileBtn = m.styles.ActiveTab.Render("  File  ")
+			folderBtn = m.styles.InactiveTab.Render("  Folder  ")
+		} else {
+			fileBtn = m.styles.InactiveTab.Render("  File  ")
+			folderBtn = m.styles.ActiveTab.Render("  Folder  ")
+		}
+		buttons := lipgloss.JoinHorizontal(lipgloss.Center, fileBtn, "    ", folderBtn)
+		sections = append(sections, buttons)
+		sections = append(sections, "")
+		sections = append(sections, m.styles.HelpText.Render("←/→ or Tab: switch • Enter: confirm • Esc: back"))
+
+	case QTStateSelectingLocal:
+		if m.direction == transfer.Upload {
+			if m.uploadType == UploadFolder {
+				sections = append(sections, m.styles.Label.Render("Select folder to upload..."))
+			} else {
+				sections = append(sections, m.styles.Label.Render("Select file to upload..."))
+			}
+		} else {
+			sections = append(sections, m.styles.Label.Render("Select download destination..."))
+		}
+		sections = append(sections, "")
+		loadingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+		sections = append(sections, loadingStyle.Render("Opening file picker..."))
+
+	case QTStateSelectingRemote:
+		if m.direction == transfer.Upload {
+			sections = append(sections, m.styles.Label.Render("Select remote destination..."))
+		} else {
+			if m.downloadType == UploadFolder {
+				sections = append(sections, m.styles.Label.Render("Select remote folder to download..."))
+			} else {
+				sections = append(sections, m.styles.Label.Render("Select remote file to download..."))
+			}
+		}
+		sections = append(sections, "")
+		if m.localPath != "" {
+			sections = append(sections, m.styles.HelpText.Render("Local: "+m.localPath))
+			sections = append(sections, "")
+		}
+		loadingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+		sections = append(sections, loadingStyle.Render("Opening remote browser..."))
+
+	case QTStateTransferring:
+		direction := "Uploading"
+		icon := "↑"
+		if m.direction == transfer.Download {
+			icon = "↓"
+			if m.downloadType == UploadFolder {
+				direction = "Downloading folder"
+			} else {
+				direction = "Downloading"
+			}
+		}
+		transferStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary))
+		sections = append(sections, transferStyle.Render(fmt.Sprintf("%s %s", icon, direction)))
+		sections = append(sections, "")
+		sections = append(sections, m.styles.HelpText.Render("From: "+m.localPath))
+		sections = append(sections, m.styles.HelpText.Render("  To: "+m.remotePath))
+		sections = append(sections, "")
+		// Animated progress bar
+		progressBar := m.renderProgressBar(30)
+		sections = append(sections, progressBar)
+		sections = append(sections, "")
+		sections = append(sections, m.styles.HelpText.Render("Ctrl+C to cancel"))
+
+	case QTStateError:
+		// Error state with retry option
+		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+		sections = append(sections, errorStyle.Render("✗ Transfer Failed"))
+		sections = append(sections, "")
+		sections = append(sections, m.styles.HelpText.Render("From: "+m.localPath))
+		sections = append(sections, m.styles.HelpText.Render("  To: "+m.remotePath))
+		sections = append(sections, "")
+		sections = append(sections, errorStyle.Render(m.err))
+		if m.retryCount > 0 {
+			sections = append(sections, "")
+			sections = append(sections, m.styles.HelpText.Render(fmt.Sprintf("Retry attempts: %d", m.retryCount)))
+		}
+		sections = append(sections, "")
+		retryStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary))
+		sections = append(sections, retryStyle.Render("Press 'r' to retry • Esc to cancel"))
+
+	case QTStateDone:
+		successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+		sections = append(sections, successStyle.Render("✓ Transfer Complete!"))
+		sections = append(sections, "")
+		sections = append(sections, m.styles.HelpText.Render("From: "+m.localPath))
+		sections = append(sections, m.styles.HelpText.Render("  To: "+m.remotePath))
 	}
 
 	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
