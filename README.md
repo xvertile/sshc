@@ -267,6 +267,46 @@ SSHC remembers forwarding configurations per host. Previously used setups appear
 
 ---
 
+## Kubernetes
+
+Manage Kubernetes pods alongside SSH hosts in a unified interface.
+
+### Setup
+
+Kubernetes hosts are stored separately in `~/.config/sshc/k8s.yaml`:
+
+```yaml
+hosts:
+  - name: api-pod
+    namespace: production
+    context: prod-cluster
+    container: api
+    tags:
+      - production
+      - api
+  - name: worker-pod
+    namespace: staging
+    context: staging-cluster
+    tags:
+      - staging
+```
+
+### Features
+
+- `kubectl exec` integration with interactive shell
+- Namespace, context, and container selection
+- Same tag system as SSH hosts
+- Appears in the main host list alongside SSH entries
+- Connection history tracking
+
+### Requirements
+
+- `kubectl` installed and configured
+- Valid kubeconfig with cluster access
+- Appropriate RBAC permissions for `exec`
+
+---
+
 ## Configuration
 
 SSHC works directly with your `~/.ssh/config` file. Custom configs can be specified with `-c`:
@@ -375,19 +415,6 @@ sudo mv sshc /usr/local/bin/
 - [Bubbles](https://github.com/charmbracelet/bubbles) — TUI components
 - [Lip Gloss](https://github.com/charmbracelet/lipgloss) — styling
 - [x/crypto/ssh](https://golang.org/x/crypto/ssh) — SSH connectivity
-
----
-
-## Releases
-
-| Platform | Architecture | Download |
-|----------|--------------|----------|
-| Linux | AMD64 | [sshc-linux-amd64.tar.gz](https://github.com/xvertile/sshc/releases/latest/download/sshc-linux-amd64.tar.gz) |
-| Linux | ARM64 | [sshc-linux-arm64.tar.gz](https://github.com/xvertile/sshc/releases/latest/download/sshc-linux-arm64.tar.gz) |
-| macOS | Intel | [sshc-darwin-amd64.tar.gz](https://github.com/xvertile/sshc/releases/latest/download/sshc-darwin-amd64.tar.gz) |
-| macOS | Apple Silicon | [sshc-darwin-arm64.tar.gz](https://github.com/xvertile/sshc/releases/latest/download/sshc-darwin-arm64.tar.gz) |
-| Windows | AMD64 | [sshc-windows-amd64.zip](https://github.com/xvertile/sshc/releases/latest/download/sshc-windows-amd64.zip) |
-| Windows | ARM64 | [sshc-windows-arm64.zip](https://github.com/xvertile/sshc/releases/latest/download/sshc-windows-arm64.zip) |
 
 ---
 
