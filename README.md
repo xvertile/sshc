@@ -95,7 +95,7 @@ Upload or download files without leaving the TUI.
 - Transfer history — logs all transfers per host
 
 <p align="center">
-  <img src="images/img.png" alt="file transfer">
+  <img src="images/transfer.gif" alt="file transfer">
 </p>
 
 ### SSH Key Management
