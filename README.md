@@ -13,7 +13,7 @@
 <br>
 
 <p align="center">
-  <img src="images/menu.png" alt="sshc">
+  <img src="images/showcase.gif" alt="sshc">
 </p>
 
 <br>
@@ -45,5 +45,9 @@ go install github.com/xvertile/sshc@latest
 <br>
 
 <p align="center">
-  <img src="images/showcase.gif" alt="showcase" width="700">
+  <sub>Clean, distraction-free interface with real-time host status</sub>
+</p>
+
+<p align="center">
+  <img src="images/img.png" alt="sshc interface">
 </p>
