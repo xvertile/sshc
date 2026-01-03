@@ -68,7 +68,7 @@ Add, edit, delete, and move SSH hosts through an interactive TUI or CLI.
 - Custom SSH options per host (RemoteCommand, RequestTTY, etc.)
 
 <p align="center">
-  <img src="images/img.png" alt="host management">
+  <img src="images/hosts-crud.gif" alt="connection">
 </p>
 
 ### Connection
@@ -81,7 +81,7 @@ One-key connect — select a host, press Enter.
 - Retry on failure — connection error view with instant retry option
 
 <p align="center">
-  <img src="images/img.png" alt="connection">
+  <img src="images/hosts-crud.gif" alt="connection">
 </p>
 
 ### File Transfer
