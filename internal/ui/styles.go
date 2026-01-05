@@ -30,7 +30,7 @@ var Themes = []Theme{
 		Foreground:  "#F1F5F9", // Slate White
 		SelectionBg: "#1E293B", // Lighter Slate
 		SelectionFg: "#60A5FA", // Light Blue
-		Muted:       "#475569",
+		Muted:       "#94A3B8",
 	},
 	{
 		Name:        "Dracula",
@@ -43,7 +43,7 @@ var Themes = []Theme{
 		Foreground:  "#F8F8F2",
 		SelectionBg: "#44475A",
 		SelectionFg: "#FF79C6",
-		Muted:       "#6272A4",
+		Muted:       "#8894B8",
 	},
 	{
 		Name:        "Nord",
@@ -56,7 +56,7 @@ var Themes = []Theme{
 		Foreground:  "#D8DEE9", // White-ish
 		SelectionBg: "#3B4252", // Lighter Grey
 		SelectionFg: "#88C0D0",
-		Muted:       "#434C5E",
+		Muted:       "#7B88A1",
 	},
 	{
 		Name:        "Monokai",
@@ -69,7 +69,7 @@ var Themes = []Theme{
 		Foreground:  "#F8F8F2",
 		SelectionBg: "#3E3D32",
 		SelectionFg: "#A6E22E",
-		Muted:       "#75715E",
+		Muted:       "#A09B85",
 	},
 	{
 		Name:        "Solarized Dark",
@@ -82,7 +82,7 @@ var Themes = []Theme{
 		Foreground:  "#839496",
 		SelectionBg: "#073642",
 		SelectionFg: "#93A1A1",
-		Muted:       "#586E75",
+		Muted:       "#93A1A1",
 	},
 	{
 		Name:        "Gruvbox",
@@ -95,7 +95,7 @@ var Themes = []Theme{
 		Foreground:  "#EBDBB2",
 		SelectionBg: "#3C3836",
 		SelectionFg: "#FE8019",
-		Muted:       "#7C6F64",
+		Muted:       "#A89984",
 	},
 	{
 		Name:        "Tokyo Night",
@@ -108,7 +108,7 @@ var Themes = []Theme{
 		Foreground:  "#C0CAF5",
 		SelectionBg: "#292E42",
 		SelectionFg: "#7AA2F7",
-		Muted:       "#565F89",
+		Muted:       "#9AA5CE",
 	},
 	{
 		Name:        "Catppuccin Mocha",
@@ -121,7 +121,7 @@ var Themes = []Theme{
 		Foreground:  "#CDD6F4", // Text
 		SelectionBg: "#313244", // Surface
 		SelectionFg: "#CBA6F7",
-		Muted:       "#6C7086",
+		Muted:       "#9399B2",
 	},
 	{
 		Name:        "One Dark",
@@ -134,7 +134,7 @@ var Themes = []Theme{
 		Foreground:  "#ABB2BF",
 		SelectionBg: "#3E4451",
 		SelectionFg: "#61AFEF",
-		Muted:       "#4B5263",
+		Muted:       "#7F848E",
 	},
 	{
 		Name:        "Cyberpunk",
@@ -147,7 +147,7 @@ var Themes = []Theme{
 		Foreground:  "#F0F0F0",
 		SelectionBg: "#212121",
 		SelectionFg: "#00E5FF",
-		Muted:       "#696969",
+		Muted:       "#A0A0A0",
 	},
 	{
 		Name:        "Teal Ocean",
@@ -160,7 +160,7 @@ var Themes = []Theme{
 		Foreground:  "#F0FDFA", // Azure White
 		SelectionBg: "#115E59", // Deep Teal
 		SelectionFg: "#CCFBF1", // Light Teal
-		Muted:       "#365961",
+		Muted:       "#6B9CA6",
 	},
 }
 

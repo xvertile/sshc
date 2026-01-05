@@ -228,6 +228,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.filteredHosts = m.hosts
 			}
 
+			// Rebuild unified entries to include changes
+			m.rebuildEntries()
 			m.updateTableRows()
 			m.viewMode = ViewList
 			m.addForm = nil
@@ -272,6 +274,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.filteredHosts = m.hosts
 			}
 
+			// Rebuild unified entries to include changes
+			m.rebuildEntries()
 			m.updateTableRows()
 			m.viewMode = ViewList
 			m.editForm = nil
@@ -317,6 +321,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.filteredHosts = m.hosts
 			}
 
+			// Rebuild unified entries to include changes
+			m.rebuildEntries()
 			m.updateTableRows()
 			m.viewMode = ViewList
 			m.moveForm = nil
