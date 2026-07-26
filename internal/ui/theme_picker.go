@@ -72,9 +72,8 @@ func (m *themePickerModel) Update(msg tea.Msg) (*themePickerModel, tea.Cmd) {
 			return m, func() tea.Msg { return themePickerSubmitMsg{themeName: themeName} }
 
 		case "up", "k":
-			m.selectedIndex--
-			if m.selectedIndex < 0 {
-				m.selectedIndex = len(Themes) - 1
+			if m.selectedIndex > 0 {
+				m.selectedIndex--
 			}
 			// Apply theme live for preview
 			SetTheme(m.selectedIndex)
@@ -82,9 +81,8 @@ func (m *themePickerModel) Update(msg tea.Msg) (*themePickerModel, tea.Cmd) {
 			return m, nil
 
 		case "down", "j":
-			m.selectedIndex++
-			if m.selectedIndex >= len(Themes) {
-				m.selectedIndex = 0
+			if m.selectedIndex < len(Themes)-1 {
+				m.selectedIndex++
 			}
 			// Apply theme live for preview
 			SetTheme(m.selectedIndex)
@@ -99,79 +97,34 @@ func (m *themePickerModel) Update(msg tea.Msg) (*themePickerModel, tea.Cmd) {
 func (m *themePickerModel) View() string {
 	theme := GetCurrentTheme()
 
-	// Title style
-	titleStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(theme.Primary)).
+	selectedStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(theme.SelectionFg)).
+		Background(lipgloss.Color(theme.SelectionBg)).
 		Bold(true)
 
-	// Container style
-	containerStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(theme.Primary)).
-		Padding(1, 3).
-		Align(lipgloss.Center)
-
-	// Help style
-	helpStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(theme.Muted))
-
-	// Build theme list items
-	var themeItems []string
+	// Each row previews its own theme's colours, so the whole palette is
+	// comparable at a glance instead of one theme at a time.
+	lines := make([]string, 0, len(Themes))
 	for i, t := range Themes {
-		var line string
+		swatches := lipgloss.NewStyle().Foreground(lipgloss.Color(t.Primary)).Render("███") +
+			lipgloss.NewStyle().Foreground(lipgloss.Color(t.Accent)).Render("███") +
+			lipgloss.NewStyle().Foreground(lipgloss.Color(t.Success)).Render("███") +
+			lipgloss.NewStyle().Foreground(lipgloss.Color(t.Error)).Render("███")
+
+		name := lipgloss.NewStyle().Width(20).Render(t.Name)
+
 		if i == m.selectedIndex {
-			// Selected item
-			selectedStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color(theme.SelectionFg)).
-				Background(lipgloss.Color(theme.SelectionBg)).
-				Bold(true).
-				Padding(0, 2)
-			line = selectedStyle.Render(t.Name)
+			lines = append(lines, selectedStyle.Render(" ▸ "+name)+" "+swatches)
 		} else {
-			// Normal item
-			normalStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color(theme.Foreground)).
-				Padding(0, 2)
-			line = normalStyle.Render(t.Name)
+			lines = append(lines, "   "+muted(name)+" "+swatches)
 		}
-		themeItems = append(themeItems, line)
 	}
 
-	// Color preview for selected theme
-	selectedTheme := Themes[m.selectedIndex]
-	previewStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(selectedTheme.Primary)).
-		Padding(0, 1).
-		Align(lipgloss.Center)
-
-	var previewContent strings.Builder
-	previewContent.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(selectedTheme.Primary)).Render("Primary"))
-	previewContent.WriteString("  ")
-	previewContent.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(selectedTheme.Accent)).Render("Accent"))
-	previewContent.WriteString("  ")
-	previewContent.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(selectedTheme.Success)).Render("Success"))
-	previewContent.WriteString("  ")
-	previewContent.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(selectedTheme.Error)).Render("Error"))
-
-	// Stack everything centered
-	content := lipgloss.JoinVertical(lipgloss.Center,
-		titleStyle.Render("Select Theme"),
-		"",
-		lipgloss.JoinVertical(lipgloss.Center, themeItems...),
-		"",
-		previewStyle.Render(previewContent.String()),
-		"",
-		helpStyle.Render(fmt.Sprintf("Theme %d of %d", m.selectedIndex+1, len(Themes))),
-		helpStyle.Render("Up/Down: navigate • Enter: confirm • Esc: cancel"),
-	)
-
-	// Center the dialog
-	return lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		containerStyle.Render(content),
+	return formScreen(m.width, m.height,
+		fmt.Sprintf("theme %d/%d", m.selectedIndex+1, len(Themes)),
+		strings.Join(lines, "\n"), "",
+		keyHint{"↑↓", "preview"},
+		keyHint{"↵", "confirm"},
+		keyHint{"esc", "cancel"},
 	)
 }

@@ -32,12 +32,15 @@ func GetDefaultKeyBindings() KeyBindings {
 	}
 }
 
-// GetDefaultAppConfig returns the default application configuration
+// GetDefaultAppConfig returns the default application configuration.
+//
+// Sorting defaults to "recent": the host you want next is usually the host you
+// used last, so the most likely target sits under the cursor on launch.
 func GetDefaultAppConfig() AppConfig {
 	return AppConfig{
 		KeyBindings: GetDefaultKeyBindings(),
 		Theme:       "Default",
-		SortMode:    "name",
+		SortMode:    "recent",
 	}
 }
 

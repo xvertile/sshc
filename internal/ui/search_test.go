@@ -3,10 +3,9 @@ package ui
 import (
 	"testing"
 
-	"github.com/xvertile/sshc/internal/config"
-	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/xvertile/sshc/internal/config"
 )
 
 // createTestModel creates a model with test data for testing
@@ -20,16 +19,18 @@ func createTestModel() Model {
 	}
 
 	m := Model{
-		hosts:         hosts,
-		filteredHosts: hosts,
-		searchInput:   textinput.New(),
-		table:         table.New(),
-		searchMode:    false,
-		ready:         true,
-		width:         80,
-		height:        24,
-		styles:        NewStyles(80),
+		hosts:       hosts,
+		searchInput: textinput.New(),
+		table:       hostTable{},
+		searchMode:  false,
+		ready:       true,
+		width:       80,
+		height:      24,
+		styles:      NewStyles(80),
 	}
+
+	// Build the unified entry list the table and selection are driven from
+	m.rebuildEntries()
 
 	// Initialize table with test data
 	m.updateTableColumns()
@@ -79,12 +80,12 @@ func TestSearchFiltering(t *testing.T) {
 
 	// Should filter to only hosts containing "server"
 	expectedHosts := []string{"server1", "server2", "server3", "web-server", "db-server"}
-	if len(m.filteredHosts) != len(expectedHosts) {
-		t.Errorf("Expected %d filtered hosts, got %d", len(expectedHosts), len(m.filteredHosts))
+	if len(m.filteredEntries) != len(expectedHosts) {
+		t.Errorf("Expected %d filtered hosts, got %d", len(expectedHosts), len(m.filteredEntries))
 	}
 
 	// Check that all filtered hosts contain "server"
-	for _, host := range m.filteredHosts {
+	for _, host := range m.filteredEntries {
 		found := false
 		for _, expected := range expectedHosts {
 			if host.Name == expected {
@@ -114,12 +115,12 @@ func TestSearchFilteringSpecific(t *testing.T) {
 	}
 
 	// Should filter to only hosts containing "web"
-	if len(m.filteredHosts) != 1 {
-		t.Errorf("Expected 1 filtered host, got %d", len(m.filteredHosts))
+	if len(m.filteredEntries) != 1 {
+		t.Errorf("Expected 1 filtered host, got %d", len(m.filteredEntries))
 	}
 
-	if len(m.filteredHosts) > 0 && m.filteredHosts[0].Name != "web-server" {
-		t.Errorf("Expected 'web-server', got '%s'", m.filteredHosts[0].Name)
+	if len(m.filteredEntries) > 0 && m.filteredEntries[0].Name != "web-server" {
+		t.Errorf("Expected 'web-server', got '%s'", m.filteredEntries[0].Name)
 	}
 }
 
@@ -140,7 +141,7 @@ func TestSearchClearReturnToOriginal(t *testing.T) {
 	}
 
 	// Should have filtered results
-	if len(m.filteredHosts) >= originalHostCount {
+	if len(m.filteredEntries) >= originalHostCount {
 		t.Error("Search should have filtered down the results")
 	}
 
@@ -152,8 +153,8 @@ func TestSearchClearReturnToOriginal(t *testing.T) {
 	}
 
 	// Should return to all hosts
-	if len(m.filteredHosts) != originalHostCount {
-		t.Errorf("Expected %d hosts after clearing search, got %d", originalHostCount, len(m.filteredHosts))
+	if len(m.filteredEntries) != originalHostCount {
+		t.Errorf("Expected %d hosts after clearing search, got %d", originalHostCount, len(m.filteredEntries))
 	}
 }
 
@@ -182,7 +183,7 @@ func TestCursorPositionAfterFiltering(t *testing.T) {
 
 	// Cursor should be reset to 0 since filtered results has only 1 item
 	// and cursor position 2 would be out of bounds
-	if len(m.filteredHosts) == 1 && m.table.Cursor() != 0 {
+	if len(m.filteredEntries) == 1 && m.table.Cursor() != 0 {
 		t.Errorf("Expected cursor to be reset to 0 when filtered results are smaller, got %d", m.table.Cursor())
 	}
 }
@@ -251,8 +252,8 @@ func TestSearchModeDoesNotTriggerOnEmptyInput(t *testing.T) {
 
 	// At this point, filteredHosts should still be the same as the original hosts
 	// because entering search mode should not trigger filtering with empty input
-	if len(m.filteredHosts) != originalHostCount {
-		t.Errorf("Expected %d hosts when entering search mode, got %d", originalHostCount, len(m.filteredHosts))
+	if len(m.filteredEntries) != originalHostCount {
+		t.Errorf("Expected %d hosts when entering search mode, got %d", originalHostCount, len(m.filteredEntries))
 	}
 }
 
@@ -273,8 +274,8 @@ func TestSearchByHostname(t *testing.T) {
 	}
 
 	// All hosts should match since they all have "example.com" in hostname
-	if len(m.filteredHosts) != len(m.hosts) {
-		t.Errorf("Expected all %d hosts to match hostname search, got %d", len(m.hosts), len(m.filteredHosts))
+	if len(m.filteredEntries) != len(m.hosts) {
+		t.Errorf("Expected all %d hosts to match hostname search, got %d", len(m.hosts), len(m.filteredEntries))
 	}
 }
 
@@ -295,11 +296,11 @@ func TestSearchByUser(t *testing.T) {
 	}
 
 	// Only server1 should match
-	if len(m.filteredHosts) != 1 {
-		t.Errorf("Expected 1 host to match user search, got %d", len(m.filteredHosts))
+	if len(m.filteredEntries) != 1 {
+		t.Errorf("Expected 1 host to match user search, got %d", len(m.filteredEntries))
 	}
 
-	if len(m.filteredHosts) > 0 && m.filteredHosts[0].Name != "server1" {
-		t.Errorf("Expected 'server1' to match user search, got '%s'", m.filteredHosts[0].Name)
+	if len(m.filteredEntries) > 0 && m.filteredEntries[0].Name != "server1" {
+		t.Errorf("Expected 'server1' to match user search, got '%s'", m.filteredEntries[0].Name)
 	}
 }

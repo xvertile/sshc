@@ -35,6 +35,10 @@ func (m Model) View() string {
 		if m.portForwardForm != nil {
 			return m.portForwardForm.View()
 		}
+	case ViewPortForwardSession:
+		if m.portForwardActive != nil {
+			return m.portForwardActive.View()
+		}
 	case ViewTransfer:
 		if m.transferForm != nil {
 			return m.transferForm.View()
@@ -80,292 +84,190 @@ func (m Model) View() string {
 	return m.renderListView()
 }
 
-// renderListView renders the main list interface
+// renderListView renders the main list interface.
+//
+// The layout is fixed-height and top-anchored: a status line, a filter line, a
+// rule, the table, a rule, and key hints. Every line not claimed by that
+// chrome belongs to the table, so the host list grows with the terminal
+// instead of floating in the middle of it.
 func (m Model) renderListView() string {
-	// Build the interface components
-	components := []string{}
+	chrome := chromeFor(m.height)
+	width := m.contentWidth()
 
-	// Add the ASCII title
-	components = append(components, m.styles.Header.Render(asciiTitle))
+	sections := [][]string{{m.renderHeaderLine(width)}}
 
-	// Add update notification if available (between title and search)
-	if m.updateInfo != nil && m.updateInfo.Available {
-		updateText := fmt.Sprintf("Update available: %s -> %s",
-			m.updateInfo.CurrentVer,
-			m.updateInfo.LatestVer)
+	rows := len(sections) // the table section goes next
+	sections = append(sections, strings.Split(m.table.View(), "\n"))
 
-		updateStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("10")). // Green color
-			Bold(true).
-			Align(lipgloss.Center) // Center the notification
-
-		components = append(components, updateStyle.Render(updateText))
+	if chrome.hints {
+		sections = append(sections, []string{m.renderFooterLine(width)})
 	}
 
-	// Add error message if there's one to show
-	if m.showingError && m.errorMessage != "" {
-		errorStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("9")). // Red color
-			Background(lipgloss.Color("1")). // Dark red background
-			Bold(true).
-			Padding(0, 1).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("9")).
-			Align(lipgloss.Center)
-
-		components = append(components, errorStyle.Render("[!] "+m.errorMessage))
+	if chrome.box {
+		return panel(m.width, m.height, sections, rows)
 	}
 
-	// Add the search bar with the appropriate style based on focus
-	searchPrompt := "Search (/ to focus): "
-	if m.searchMode {
-		components = append(components, m.styles.SearchFocused.Render(searchPrompt+m.searchInput.View()))
-	} else {
-		components = append(components, m.styles.SearchUnfocused.Render(searchPrompt+m.searchInput.View()))
-	}
-
-	// Add the table with the appropriate style based on focus
-	if m.searchMode {
-		// The table is not focused, use the unfocused style
-		components = append(components, m.styles.TableUnfocused.Render(m.table.View()))
-	} else {
-		// The table is focused, use the focused style with the primary color
-		components = append(components, m.styles.TableFocused.Render(m.table.View()))
-	}
-
-	// Add the help text - constrained to table width
-	theme := GetCurrentTheme()
-	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
-
-	// Calculate table width from current columns
-	tableWidth := m.getTableWidth()
-
-	var helpParts []string
-	if !m.searchMode {
-		helpParts = append(helpParts, mutedStyle.Render("↑/↓: navigate • Enter: connect • a: add • c: themes • ctrl+s: search focus "))
-		if m.appConfig != nil && m.appConfig.StartInSearchMode {
-			onStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary)).Bold(true)
-			helpParts = append(helpParts, onStyle.Render("[on]"))
-		} else {
-			helpParts = append(helpParts, mutedStyle.Render("[off]"))
+	// Too short to spend two lines on a border: stack the sections plain.
+	var header, footer []string
+	for i, section := range sections {
+		switch {
+		case i < rows:
+			header = append(header, section...)
+		case i > rows:
+			footer = append(footer, section...)
 		}
-		helpParts = append(helpParts, mutedStyle.Render(" • h: help • q: quit"))
-	} else {
-		helpParts = append(helpParts, mutedStyle.Render("Type to filter • Enter: validate • Tab: switch • ctrl+s: search focus "))
-		if m.appConfig != nil && m.appConfig.StartInSearchMode {
-			onStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary)).Bold(true)
-			helpParts = append(helpParts, onStyle.Render("[on]"))
-		} else {
-			helpParts = append(helpParts, mutedStyle.Render("[off]"))
-		}
-		helpParts = append(helpParts, mutedStyle.Render(" • Esc: exit"))
 	}
 
-	// Constrain help text to table width using lipgloss
-	helpStyle := lipgloss.NewStyle().Width(tableWidth).Align(lipgloss.Center)
-	components = append(components, helpStyle.Render(strings.Join(helpParts, "")))
-
-	// Join all components vertically with center alignment
-	mainView := lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		lipgloss.JoinVertical(
-			lipgloss.Center,
-			components...,
-		),
+	return screen(m.width, m.height,
+		strings.Join(header, "\n"),
+		m.table.View(),
+		strings.Join(footer, "\n"),
 	)
+}
 
-	// If in delete mode, overlay the confirmation dialog
+// contentWidth returns the columns available to content, which the border and
+// its padding reduce when the screen is framed.
+func (m Model) contentWidth() int {
+	if chromeFor(m.height).box {
+		return contentWidth(m.width)
+	}
+	return m.width
+}
+
+// renderHeaderLine renders the single top row: the wordmark and search on the
+// left, the host count on the right.
+func (m Model) renderHeaderLine(width int) string {
+	theme := GetCurrentTheme()
+
+	left := wordmark()
+
+	// "dev" is the placeholder a build carries when no version was injected at
+	// link time, so it says nothing worth a slot in the header.
+	if m.currentVersion != "" && m.currentVersion != devVersion {
+		left += " " + muted(m.currentVersion)
+	}
+
+	// Show "shown/total" only while a filter is actually narrowing the list.
+	total := len(m.allEntries)
+	shown := len(m.filteredEntries)
+
+	right := fmt.Sprintf("%d hosts", total)
+	if shown != total {
+		right = fmt.Sprintf("%d/%d hosts", shown, total)
+	}
+	right = muted(right)
+
+	// A transient error takes the right slot outright, then an available
+	// update; either displaces the count, which matters less than both.
+	switch {
+	case m.showingError && m.errorMessage != "":
+		right = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(theme.Error)).
+			Bold(true).
+			Render("! " + m.errorMessage)
+
+	case m.updateInfo != nil && m.updateInfo.Available:
+		right = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(theme.Success)).
+			Render("⇧ "+m.updateInfo.LatestVer) + "  " + right
+	}
+
+	return statusLine(width, left+"  "+m.renderSearch(), right)
+}
+
+// renderSearch renders the search, which sits beside the wordmark rather than
+// on a line of its own.
+func (m Model) renderSearch() string {
+	if m.searchMode {
+		label := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(GetCurrentTheme().Primary)).
+			Bold(true).
+			Render("search ▸ ")
+		return label + m.searchInput.View()
+	}
+
+	if query := m.searchInput.Value(); query != "" {
+		return muted("search ") + accent(query)
+	}
+
+	return muted("press / to search")
+}
+
+// renderFooterLine renders the frame's bottom edge, carrying either the key
+// hints or the delete confirmation prompt. The prompt is inline rather than a
+// modal so the host list stays visible while confirming.
+func (m Model) renderFooterLine(width int) string {
+
 	if m.deleteMode {
-		// Combine the main view with the confirmation dialog overlay
-		confirmation := m.renderDeleteConfirmation()
+		kind := "host"
+		if m.deleteHostIsK8s {
+			kind = "k8s host"
+		}
 
-		// Center the confirmation dialog on the screen
-		centeredConfirmation := lipgloss.Place(
-			m.width,
-			m.height,
-			lipgloss.Center,
-			lipgloss.Center,
-			confirmation,
+		prompt := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(GetCurrentTheme().Error)).
+			Bold(true).
+			Render(fmt.Sprintf("delete %s %q?", kind, m.deleteHost))
+
+		hints := keyHints(width,
+			keyHint{"enter", "confirm"},
+			keyHint{"esc", "cancel"},
 		)
 
-		return centeredConfirmation
+		return statusLine(width, prompt+"  "+hints, "")
 	}
 
-	return mainView
+	if m.searchMode {
+		return keyHints(width,
+			keyHint{"enter", "apply"},
+			keyHint{"tab", "list"},
+			keyHint{"esc", "exit"},
+		)
+	}
+
+	// help and quit are pinned right: on a narrow terminal the action hints
+	// are dropped from the middle, but the way out stays visible.
+	pinned := keyHints(width, keyHint{"h", "help"}, keyHint{"q", "quit"})
+
+	actions := keyHints(width-lipgloss.Width(pinned)-2,
+		keyHint{"↵", "connect"},
+		keyHint{"a", "add"},
+		keyHint{"e", "edit"},
+		keyHint{"d", "delete"},
+		keyHint{"i", "info"},
+		keyHint{"f", "forward"},
+		keyHint{"t", "transfer"},
+		keyHint{"k", "key"},
+		keyHint{"p", "ping"},
+		keyHint{"s", "sort"},
+		keyHint{"c", "theme"},
+	)
+
+	return statusLine(width, actions, pinned)
 }
 
-// renderDeleteConfirmation renders a clean delete confirmation dialog
-func (m Model) renderDeleteConfirmation() string {
-	// Remove emojis (uncertain width depending on terminal) to stabilize the frame
-	var title string
-	if m.deleteHostIsK8s {
-		title = "DELETE K8S HOST"
-	} else {
-		title = "DELETE SSH HOST"
-	}
-	question := fmt.Sprintf("Are you sure you want to delete host '%s'?", m.deleteHost)
-	action := "This action cannot be undone."
-	help := "Enter: confirm • Esc: cancel"
-
-	// Individual styles (do not affect width via internal centering)
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))
-	questionStyle := lipgloss.NewStyle()
-	actionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-
-	lines := []string{
-		titleStyle.Render(title),
-		"",
-		questionStyle.Render(question),
-		"",
-		actionStyle.Render(action),
-		"",
-		helpStyle.Render(help),
-	}
-
-	// Compute the real maximum width (ANSI-safe via lipgloss.Width)
-	maxw := 0
-	for _, ln := range lines {
-		w := lipgloss.Width(ln)
-		if w > maxw {
-			maxw = w
-		}
-	}
-	// Minimal width for aesthetics
-	if maxw < 40 {
-		maxw = 40
-	}
-
-	// Build the raw text block (without centering) then apply the container style
-	raw := strings.Join(lines, "\n")
-
-	// Container style: wider horizontal padding, stable border
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("196")).
-		PaddingTop(1).PaddingBottom(1).PaddingLeft(2).PaddingRight(2).
-		Width(maxw + 4) // +4 = internal margin (2 spaces of left/right padding)
-
-	return box.Render(raw)
-}
-
-// renderUpdateNotification renders the update notification banner
-func (m Model) renderUpdateNotification() string {
-	if m.updateInfo == nil || !m.updateInfo.Available {
-		return ""
-	}
-
-	// Create the notification message
-	message := fmt.Sprintf("Update available: %s -> %s",
-		m.updateInfo.CurrentVer,
-		m.updateInfo.LatestVer)
-
-	// Add release URL if available
-	if m.updateInfo.ReleaseURL != "" {
-		message += fmt.Sprintf(" • View release: %s", m.updateInfo.ReleaseURL)
-	}
-
-	// Style the notification with a bright color to make it stand out
-	notificationStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#00FF00")). // Bright green
-		Bold(true).
-		Padding(0, 1).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#00AA00")) // Darker green border
-
-	return notificationStyle.Render(message)
-}
-
-// renderConnectionErrorView renders the connection error view with retry option
+// renderConnectionErrorView renders the connection failure screen with retry.
 func (m Model) renderConnectionErrorView() string {
 	theme := GetCurrentTheme()
 
-	// Title
-	title := "CONNECTION FAILED"
-	hostInfo := fmt.Sprintf("Host: %s", m.connectionHost)
+	title := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(theme.Error)).
+		Bold(true).
+		Render("connection failed")
 
-	// Error message - wrap long errors
-	errorLines := strings.Split(m.connectionError, "\n")
-	var formattedError string
-	for _, line := range errorLines {
-		if len(line) > 60 {
-			// Word wrap long lines
-			words := strings.Fields(line)
-			currentLine := ""
-			for _, word := range words {
-				if len(currentLine)+len(word)+1 > 60 {
-					formattedError += currentLine + "\n"
-					currentLine = word
-				} else {
-					if currentLine == "" {
-						currentLine = word
-					} else {
-						currentLine += " " + word
-					}
-				}
-			}
-			if currentLine != "" {
-				formattedError += currentLine + "\n"
-			}
-		} else {
-			formattedError += line + "\n"
-		}
-	}
-	formattedError = strings.TrimSuffix(formattedError, "\n")
+	inner := contentWidth(m.width)
 
-	help := "r/Enter: retry • Esc/q: back to list"
+	// Wrap on the panel's width rather than the previous fixed 60 columns.
+	body := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(theme.Error)).
+		Width(inner).
+		Render(m.connectionError)
 
-	// Styles
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary))
-	hostStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Accent))
-	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203")) // Red
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
-
-	lines := []string{
-		titleStyle.Render(title),
-		"",
-		hostStyle.Render(hostInfo),
-		"",
-		errorStyle.Render(formattedError),
-		"",
-		helpStyle.Render(help),
+	sections := [][]string{
+		{statusLine(inner, title, muted(m.connectionHost))},
+		strings.Split(body, "\n"),
+		{keyHints(inner, keyHint{"r", "retry"}, keyHint{"esc", "back"})},
 	}
 
-	// Compute the real maximum width
-	maxw := 0
-	for _, ln := range lines {
-		w := lipgloss.Width(ln)
-		if w > maxw {
-			maxw = w
-		}
-	}
-	if maxw < 50 {
-		maxw = 50
-	}
-
-	raw := strings.Join(lines, "\n")
-
-	// Container style
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(theme.Primary)).
-		PaddingTop(1).PaddingBottom(1).PaddingLeft(2).PaddingRight(2).
-		Width(maxw + 4)
-
-	// Logo
-	logo := m.styles.Header.Render(asciiTitle)
-
-	// Stack logo and container
-	fullContent := lipgloss.JoinVertical(lipgloss.Center, logo, "", box.Render(raw))
-
-	return lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		fullContent,
-	)
+	return panel(m.width, m.height, sections, 1)
 }

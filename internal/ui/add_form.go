@@ -11,7 +11,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 type addFormModel struct {
@@ -34,6 +33,21 @@ const (
 	addProxyJumpInput
 	addTagsInput
 )
+
+// addFields lists the inputs in display order.
+var addFields = []struct {
+	index    int
+	label    string
+	required bool
+}{
+	{addNameInput, "Name", true},
+	{addHostnameInput, "Hostname", true},
+	{addUserInput, "User", false},
+	{addPortInput, "Port", false},
+	{addIdentityInput, "Identity File", false},
+	{addProxyJumpInput, "ProxyJump", false},
+	{addTagsInput, "Tags", false},
+}
 
 // Messages for communication with parent model
 type addFormSubmitMsg struct {
@@ -66,7 +80,7 @@ func NewAddForm(hostname string, styles Styles, width, height int, configFile st
 		}
 	}
 
-	inputs := make([]textinput.Model, 7)
+	inputs := make([]textinput.Model, len(addFields))
 
 	// Name input
 	inputs[addNameInput] = textinput.New()
@@ -118,6 +132,11 @@ func NewAddForm(hostname string, styles Styles, width, height int, configFile st
 	inputs[addTagsInput].CharLimit = 200
 	inputs[addTagsInput].Width = 40
 
+	for i := range inputs {
+		inputs[i] = clearInputPrompt(inputs[i])
+	}
+	fitInputs(inputs, width)
+
 	return &addFormModel{
 		inputs:     inputs,
 		focused:    addNameInput,
@@ -140,6 +159,7 @@ func (m *addFormModel) Update(msg tea.Msg) (*addFormModel, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.styles = NewStyles(m.width)
+		fitInputs(m.inputs, m.width)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -156,17 +176,16 @@ func (m *addFormModel) Update(msg tea.Msg) (*addFormModel, tea.Cmd) {
 				// Submit on enter at last field
 				return m, m.submitForm()
 			}
-			m.focused++
-			if m.focused >= len(m.inputs) {
-				m.focused = 0
+			// Stop at the last field rather than wrapping to the first.
+			if m.focused < len(m.inputs)-1 {
+				m.focused++
 			}
 			return m, m.updateFocus()
 
 		case "shift+tab", "up":
-			// Move to previous field
-			m.focused--
-			if m.focused < 0 {
-				m.focused = len(m.inputs) - 1
+			// Move to previous field, stopping at the first.
+			if m.focused > 0 {
+				m.focused--
 			}
 			return m, m.updateFocus()
 		}
@@ -206,87 +225,28 @@ func (m *addFormModel) View() string {
 		return ""
 	}
 
-	theme := GetCurrentTheme()
-	var b strings.Builder
+	var lines []string
+	focusLine := noFocusLine
 
-	// Title
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary))
-	b.WriteString(titleStyle.Render("ADD SSH HOST"))
-	b.WriteString("\n\n")
-
-	// Fields
-	fields := []struct {
-		index    int
-		label    string
-		required bool
-	}{
-		{addNameInput, "Name", true},
-		{addHostnameInput, "Hostname", true},
-		{addUserInput, "User", false},
-		{addPortInput, "Port", false},
-		{addIdentityInput, "Identity File", false},
-		{addProxyJumpInput, "ProxyJump", false},
-		{addTagsInput, "Tags", false},
-	}
-
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted)).Width(14)
-	focusedLabelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary)).Width(14)
-	requiredStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-
-	for _, field := range fields {
-		// Label
-		label := field.label
-		if field.required {
-			label += requiredStyle.Render("*")
-		}
-
+	for _, field := range addFields {
 		if m.focused == field.index {
-			b.WriteString(focusedLabelStyle.Render(label))
-			b.WriteString(" ")
-			// Show cursor indicator
-			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary)).Render("> "))
-		} else {
-			b.WriteString(labelStyle.Render(label))
-			b.WriteString("   ")
+			focusLine = len(lines)
 		}
 
-		// Input
-		b.WriteString(m.inputs[field.index].View())
-		b.WriteString("\n")
+		lines = append(lines, formField(
+			field.label,
+			field.required,
+			m.focused == field.index,
+			m.inputs[field.index].View(),
+			formLabelWidth,
+		))
 	}
 
-	// Error message
-	if m.err != "" {
-		b.WriteString("\n")
-		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-		b.WriteString(errorStyle.Render("Error: " + m.err))
-	}
-
-	// Help
-	b.WriteString("\n\n")
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
-	b.WriteString(helpStyle.Render("↑/↓: navigate • Enter: next/submit • Ctrl+S: save • Esc: cancel"))
-
-	content := b.String()
-
-	// Container
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(theme.Primary)).
-		Padding(1, 2)
-
-	// Logo
-	logo := m.styles.Header.Render(asciiTitle)
-
-	// Stack logo and container
-	fullContent := lipgloss.JoinVertical(lipgloss.Center, logo, "", box.Render(content))
-
-	return lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		fullContent,
+	return formScreenAt(m.width, m.height, "add host", strings.Join(lines, "\n"), m.err, focusLine,
+		keyHint{"↵", "next"},
+		keyHint{"↑↓", "move"},
+		keyHint{"ctrl+s", "save"},
+		keyHint{"esc", "cancel"},
 	)
 }
 

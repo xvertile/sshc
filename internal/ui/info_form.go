@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"github.com/xvertile/sshc/internal/config"
 	"strings"
 
@@ -78,12 +77,7 @@ func (m *infoFormModel) Update(msg tea.Msg) (*infoFormModel, tea.Cmd) {
 }
 
 func (m *infoFormModel) View() string {
-	var b strings.Builder
-
-	// Title
-	title := fmt.Sprintf("SSH Host Information: %s", m.host.Name)
-	b.WriteString(m.styles.FormTitle.Render(title))
-	b.WriteString("\n\n")
+	theme := GetCurrentTheme()
 
 	// Create info sections with consistent formatting
 	sections := []struct {
@@ -101,73 +95,29 @@ func (m *infoFormModel) View() string {
 		{"Tags", formatTags(m.host.Tags)},
 	}
 
-	// Render each section
+	labelStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(theme.Muted)).
+		Width(formLabelWidth)
+
+	valueStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(theme.Foreground))
+
+	unsetStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(theme.Muted))
+
+	lines := make([]string, 0, len(sections))
 	for _, section := range sections {
-		// Label style
-		labelStyle := lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("39")). // Bright blue
-			Width(15).
-			AlignHorizontal(lipgloss.Right)
-
-		// Value style
-		valueStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("255")) // White
-
-		// If value is empty or default, use a muted style
-		if section.value == "Not set" || section.value == "22" && section.label == "Port" {
-			valueStyle = valueStyle.Foreground(lipgloss.Color("243")) // Gray
+		value := valueStyle.Render(section.value)
+		if section.value == "Not set" {
+			value = unsetStyle.Render(section.value)
 		}
-
-		line := lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			labelStyle.Render(section.label+":"),
-			" ",
-			valueStyle.Render(section.value),
-		)
-		b.WriteString(line)
-		b.WriteString("\n")
+		lines = append(lines, "  "+labelStyle.Render(section.label)+value)
 	}
 
-	b.WriteString("\n")
-
-	// Action instructions
-	helpStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("243")).
-		Italic(true)
-
-	b.WriteString(helpStyle.Render("Actions:"))
-	b.WriteString("\n")
-
-	actionStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("120")). // Green
-		Bold(true)
-
-	b.WriteString("  ")
-	b.WriteString(actionStyle.Render("e/Enter"))
-	b.WriteString(helpStyle.Render(" - Switch to edit mode"))
-	b.WriteString("\n")
-
-	b.WriteString("  ")
-	b.WriteString(actionStyle.Render("q/Esc"))
-	b.WriteString(helpStyle.Render(" - Return to host list"))
-
-	// Wrap in a border for better visual separation
-	content := b.String()
-
-	borderStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("39")).
-		Padding(1).
-		Margin(1)
-
-	// Center the info window
-	return lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		borderStyle.Render(content),
+	return formScreen(m.width, m.height,
+		"host "+m.host.Name, strings.Join(lines, "\n"), "",
+		keyHint{"e", "edit"},
+		keyHint{"esc", "back"},
 	)
 }
 

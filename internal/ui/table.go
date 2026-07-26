@@ -2,398 +2,351 @@ package ui
 
 import (
 	"strings"
+	"time"
 
-	"github.com/xvertile/sshc/internal/config"
-	"github.com/xvertile/sshc/internal/history"
-
-	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/lipgloss"
 )
 
-// calculateDynamicColumnWidths calculates optimal column widths based on terminal width
-// and content length, ensuring all content fits when possible
-func (m *Model) calculateDynamicColumnWidths(hosts []config.SSHHost) (int, int, int, int) {
-	if m.width <= 0 {
-		// Fallback to static widths if terminal width is not available
-		return calculateNameColumnWidth(hosts), 25, calculateTagsColumnWidth(hosts), calculateLastLoginColumnWidth(hosts, m.historyManager)
+// Minimum widths below which a column stops being readable.
+const (
+	minNameWidth     = 12
+	minHostnameWidth = 14
+	minTagsWidth     = 8
+	minLastWidth     = 4
+)
+
+// tableColumnCount is the number of columns in the host table.
+//
+// tableGutter is the blank space separating one column from the next. The
+// first column has none, so rows start hard against the left edge in line with
+// the status and hint lines. It is drawn as part of the cell so that it carries
+// the row background, leaving no gap in the selection bar.
+const (
+	tableColumnCount = 4
+	tableGutter      = 2
+)
+
+// gutterFor returns the blank space preceding a column. The first column sits
+// flush with the left edge; the rest are separated by tableGutter.
+func gutterFor(column int) int {
+	if column == 0 {
+		return 0
 	}
-
-	// Calculate content lengths
-	maxNameLength := 8       // Minimum for "Name" header + status indicator
-	maxHostnameLength := 8   // Minimum for "Hostname" header
-	maxTagsLength := 8       // Minimum for "Tags" header
-	maxLastLoginLength := 12 // Minimum for "Last Login" header
-
-	for _, host := range hosts {
-		// Name column includes status indicator (2 chars) + space (1 char) + name
-		nameLength := 3 + len(host.Name)
-		if nameLength > maxNameLength {
-			maxNameLength = nameLength
-		}
-
-		if len(host.Hostname) > maxHostnameLength {
-			maxHostnameLength = len(host.Hostname)
-		}
-
-		// Calculate tags string length
-		var tagsStr string
-		if len(host.Tags) > 0 {
-			var formattedTags []string
-			for _, tag := range host.Tags {
-				formattedTags = append(formattedTags, "#"+tag)
-			}
-			tagsStr = strings.Join(formattedTags, " ")
-		}
-		if len(tagsStr) > maxTagsLength {
-			maxTagsLength = len(tagsStr)
-		}
-
-		// Calculate last login length
-		if m.historyManager != nil {
-			if lastConnect, exists := m.historyManager.GetLastConnectionTime(host.Name); exists {
-				timeStr := formatTimeAgo(lastConnect)
-				if len(timeStr) > maxLastLoginLength {
-					maxLastLoginLength = len(timeStr)
-				}
-			}
-		}
-	}
-
-	// Add padding to each column
-	maxNameLength += 2
-	maxHostnameLength += 2
-	maxTagsLength += 2
-	maxLastLoginLength += 2
-
-	// Calculate available width (minus borders and separators)
-	// Table has borders (2 chars) + column separators (3 chars between 4 columns)
-	availableWidth := m.width - 5
-
-	totalNeededWidth := maxNameLength + maxHostnameLength + maxTagsLength + maxLastLoginLength
-
-	if totalNeededWidth <= availableWidth {
-		// Everything fits perfectly
-		return maxNameLength, maxHostnameLength, maxTagsLength, maxLastLoginLength
-	}
-
-	// Need to adjust widths - prioritize columns by importance
-	// Priority: Name > Hostname > Last Login > Tags
-
-	// Calculate minimum widths
-	minNameWidth := 15 // Enough for status + short name
-	minHostnameWidth := 15
-	minLastLoginWidth := 12
-	minTagsWidth := 10
-
-	remainingWidth := availableWidth
-
-	// Allocate minimum widths first
-	nameWidth := minNameWidth
-	hostnameWidth := minHostnameWidth
-	lastLoginWidth := minLastLoginWidth
-	tagsWidth := minTagsWidth
-
-	remainingWidth -= (nameWidth + hostnameWidth + lastLoginWidth + tagsWidth)
-
-	// Distribute remaining space proportionally
-	if remainingWidth > 0 {
-		// Calculate how much each column wants beyond minimum
-		nameWant := maxNameLength - minNameWidth
-		hostnameWant := maxHostnameLength - minHostnameWidth
-		lastLoginWant := maxLastLoginLength - minLastLoginWidth
-		tagsWant := maxTagsLength - minTagsWidth
-
-		totalWant := nameWant + hostnameWant + lastLoginWant + tagsWant
-
-		if totalWant > 0 {
-			// Distribute proportionally
-			nameExtra := (nameWant * remainingWidth) / totalWant
-			hostnameExtra := (hostnameWant * remainingWidth) / totalWant
-			lastLoginExtra := (lastLoginWant * remainingWidth) / totalWant
-			tagsExtra := remainingWidth - nameExtra - hostnameExtra - lastLoginExtra
-
-			nameWidth += nameExtra
-			hostnameWidth += hostnameExtra
-			lastLoginWidth += lastLoginExtra
-			tagsWidth += tagsExtra
-		}
-	}
-
-	return nameWidth, hostnameWidth, tagsWidth, lastLoginWidth
+	return tableGutter
 }
 
-// updateTableRows updates the table with filtered hosts (SSH and K8s)
+// tableColumnHeaders are the column titles, also the floor for column widths.
+var tableColumnHeaders = [tableColumnCount]string{"NAME", "HOSTNAME", "TAGS", "LAST"}
+
+// columnDropOrder lists columns in the order they are surrendered when the
+// terminal is too narrow to show them all: tags first, then last-login, then
+// hostname. Name is never dropped, because it is what you select by.
+var columnDropOrder = []int{2, 3, 1}
+
+// sortIndicator is appended to whichever column the list is sorted by. Its
+// width is reserved on every sortable column so widths do not shift when the
+// sort mode changes.
+const sortIndicator = " ↓"
+
+// columnTitles returns the column titles with the sort indicator applied.
+func (m *Model) columnTitles() [tableColumnCount]string {
+	titles := tableColumnHeaders
+	switch m.sortMode {
+	case SortByName:
+		titles[0] += sortIndicator
+	case SortByLastUsed:
+		titles[3] += sortIndicator
+	}
+	return titles
+}
+
+// formatEntryTags renders an entry's tags as they appear in the table.
+func formatEntryTags(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+
+	formatted := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		formatted = append(formatted, "#"+tag)
+	}
+	return strings.Join(formatted, " ")
+}
+
+// entryRowCells returns the plain, unstyled cell values for an entry. Widths
+// are measured from these, so measurement never has to reason about escape
+// sequences.
+func (m *Model) entryRowCells(entry *HostEntry) [tableColumnCount]string {
+	indicator := m.getPingStatusIndicator(entry.Name)
+	if entry.IsK8s {
+		indicator = k8sIndicator
+	}
+
+	last := "—"
+	if m.historyManager != nil {
+		if lastConnect, exists := m.historyManager.GetLastConnectionTime(entry.Name); exists {
+			last = formatTimeCompact(lastConnect)
+		}
+	}
+
+	return [tableColumnCount]string{
+		indicator + " " + entry.Name,
+		entry.Hostname,
+		formatEntryTags(entry.Tags),
+		last,
+	}
+}
+
+// k8sIndicator marks a Kubernetes entry in the status column.
+const k8sIndicator = "⬢"
+
+// styledEntryCells returns the cell values with colour applied: the status
+// glyph by connectivity, tags by name, and last-login faded by age.
+//
+// A row background is applied to every coloured span rather than wrapped
+// around the finished row. Wrapping looks correct until a span ends: its reset
+// clears the background too, punching holes in the band. Carrying the
+// background on each span keeps it continuous.
+func (m *Model) styledEntryCells(entry *HostEntry, background string, bold bool) [tableColumnCount]string {
+	cells := m.entryRowCells(entry)
+	theme := GetCurrentTheme()
+
+	color := func(hex, text string) string {
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color(hex)).Bold(bold)
+		if background != "" {
+			style = style.Background(lipgloss.Color(background))
+		}
+		return style.Render(text)
+	}
+
+	// Status glyph and name: the glyph carries connectivity, the name stays
+	// bright so it remains the thing the eye lands on.
+	glyph := m.statusColor(entry.Name)
+	if entry.IsK8s {
+		glyph = theme.Accent
+	}
+
+	indicator, name, _ := strings.Cut(cells[0], " ")
+	cells[0] = color(glyph, indicator) + color(theme.Foreground, " "+name)
+
+	cells[1] = color(theme.Muted, cells[1])
+
+	if len(entry.Tags) > 0 {
+		// Separators take the colour of the tag that follows them, so no part
+		// of the tag column is drawn in grey.
+		var tags strings.Builder
+		for i, tag := range entry.Tags {
+			hex := m.tagColor(tag)
+			if i > 0 {
+				tags.WriteString(color(hex, " "))
+			}
+			tags.WriteString(color(hex, "#"+tag))
+		}
+		cells[2] = tags.String()
+	}
+
+	lastConnect, exists := time.Time{}, false
+	if m.historyManager != nil {
+		lastConnect, exists = m.historyManager.GetLastConnectionTime(entry.Name)
+	}
+	cells[3] = color(recencyColor(lastConnect, exists), cells[3])
+
+	return cells
+}
+
+// padCell lays a cell out to exactly width columns, including the gutter that
+// separates it from the previous one, filling any slack with the row
+// background so a shaded band runs unbroken across the row.
+func padCell(content string, width, gutter int, background string) string {
+	style := lipgloss.NewStyle()
+	if background != "" {
+		style = style.Background(lipgloss.Color(background))
+	}
+
+	available := width - gutter
+	if available < 0 {
+		available = 0
+	}
+
+	used := lipgloss.Width(content)
+	if used > available {
+		content = lipgloss.NewStyle().MaxWidth(available).Render(content)
+		used = available
+	}
+
+	return style.Render(strings.Repeat(" ", gutter)) +
+		content +
+		style.Render(strings.Repeat(" ", available-used))
+}
+
+// computeColumnWidths sizes the columns to exactly fill the terminal width.
+//
+// Widths are measured with lipgloss.Width rather than len, so multi-byte host
+// names and tags no longer skew the layout by their byte count. Columns are
+// measured across all entries, not the filtered subset, so they stay put while
+// the user types a search.
+func (m *Model) computeColumnWidths() (columns []int, widths []int) {
+	// Sortable columns reserve room for the indicator whether or not they are
+	// currently the sort column, so widths stay stable across sort changes.
+	var natural [tableColumnCount]int
+	for i, header := range tableColumnHeaders {
+		natural[i] = lipgloss.Width(header)
+		if i == 0 || i == 3 {
+			natural[i] += lipgloss.Width(sortIndicator)
+		}
+	}
+
+	for i := range m.allEntries {
+		cells := m.entryRowCells(&m.allEntries[i])
+		for col, cell := range cells {
+			if w := lipgloss.Width(cell); w > natural[col] {
+				natural[col] = w
+			}
+		}
+	}
+
+	minimums := [tableColumnCount]int{minNameWidth, minHostnameWidth, minTagsWidth, minLastWidth}
+
+	// Start with every column, then give them up in priority order until the
+	// survivors fit at their minimum widths. Showing three readable columns
+	// beats showing four clipped ones.
+	columns = []int{0, 1, 2, 3}
+
+	fits := func(cols []int) bool {
+		total := (len(cols) - 1) * tableGutter
+		for _, c := range cols {
+			total += minimums[c]
+		}
+		return total <= m.contentWidth()
+	}
+
+	for _, drop := range columnDropOrder {
+		if fits(columns) {
+			break
+		}
+		kept := columns[:0:0]
+		for _, c := range columns {
+			if c != drop {
+				kept = append(kept, c)
+			}
+		}
+		columns = kept
+	}
+
+	available := m.contentWidth() - (len(columns)-1)*tableGutter
+
+	widths = make([]int, len(columns))
+	total := 0
+	for i, c := range columns {
+		widths[i] = natural[c]
+		total += widths[i]
+	}
+
+	// Everything fits: hand the surplus to the last column. The text inside it
+	// stays left-aligned, so this reads as trailing space exactly as before,
+	// but the row now spans the full width and the selection bar and row
+	// stripes reach the right-hand edge instead of stopping mid-screen.
+	if total <= available {
+		widths[len(widths)-1] += available - total
+		return columns, widths
+	}
+
+	// Over budget: shed the excess from the widest column first, but never
+	// below its minimum.
+	for excess := total - available; excess > 0; excess-- {
+		widest, widestIndex := 0, -1
+		for i, c := range columns {
+			if widths[i] > minimums[c] && widths[i] > widest {
+				widest, widestIndex = widths[i], i
+			}
+		}
+		if widestIndex == -1 {
+			break
+		}
+		widths[widestIndex]--
+	}
+
+	// Nothing left to give: clamp so bubbles is never handed a negative width.
+	for i := range widths {
+		if widths[i] < 1 {
+			widths[i] = 1
+		}
+	}
+
+	return columns, widths
+}
+
+// updateTableRows rebuilds the table rows from the filtered entries.
 func (m *Model) updateTableRows() {
-	var rows []table.Row
+	visible, widths := m.computeColumnWidths()
+	cursor := m.table.Cursor()
+	theme := GetCurrentTheme()
 
-	// Use unified entries if available, otherwise fall back to SSH hosts
-	if len(m.filteredEntries) > 0 {
-		for _, entry := range m.filteredEntries {
-			// Get status indicator
-			var statusIndicator string
-			if entry.IsK8s {
-				statusIndicator = "k" // Kubernetes indicator
-			} else {
-				statusIndicator = m.getPingStatusIndicator(entry.Name)
-			}
-
-			// Format tags for display
-			var tagsStr string
-			if len(entry.Tags) > 0 {
-				var formattedTags []string
-				for _, tag := range entry.Tags {
-					formattedTags = append(formattedTags, "#"+tag)
-				}
-				tagsStr = strings.Join(formattedTags, " ")
-			}
-
-			// Format last login information
-			var lastLoginStr string
-			if m.historyManager != nil {
-				if lastConnect, exists := m.historyManager.GetLastConnectionTime(entry.Name); exists {
-					lastLoginStr = formatTimeAgo(lastConnect)
-				}
-			}
-
-			rows = append(rows, table.Row{
-				statusIndicator + " " + entry.Name,
-				entry.Hostname,
-				tagsStr,
-				lastLoginStr,
-			})
-		}
-	} else {
-		// Fallback to SSH hosts only
-		hostsToShow := m.filteredHosts
-		if hostsToShow == nil {
-			hostsToShow = m.hosts
+	rows := make([]tableRow, 0, len(m.filteredEntries))
+	for i := range m.filteredEntries {
+		// Only the selected row carries a background; the rest are separated
+		// by their own colour alone.
+		background, bold := "", false
+		if i == cursor {
+			background, bold = theme.SelectionBg, true
 		}
 
-		for _, host := range hostsToShow {
-			statusIndicator := m.getPingStatusIndicator(host.Name)
+		cells := m.styledEntryCells(&m.filteredEntries[i], background, bold)
 
-			var tagsStr string
-			if len(host.Tags) > 0 {
-				var formattedTags []string
-				for _, tag := range host.Tags {
-					formattedTags = append(formattedTags, "#"+tag)
-				}
-				tagsStr = strings.Join(formattedTags, " ")
-			}
-
-			var lastLoginStr string
-			if m.historyManager != nil {
-				if lastConnect, exists := m.historyManager.GetLastConnectionTime(host.Name); exists {
-					lastLoginStr = formatTimeAgo(lastConnect)
-				}
-			}
-
-			rows = append(rows, table.Row{
-				statusIndicator + " " + host.Name,
-				host.Hostname,
-				tagsStr,
-				lastLoginStr,
-			})
+		row := make(tableRow, 0, len(visible))
+		for column, index := range visible {
+			row = append(row, padCell(cells[index], widths[column]+gutterFor(column), gutterFor(column), background))
 		}
+		rows = append(rows, row)
 	}
 
 	m.table.SetRows(rows)
 
-	// Update table height and columns based on current terminal size
+	// Keep the cursor inside the new row set, otherwise selection would point
+	// at a stale index after a filter narrows the list.
+	if cursor := m.table.Cursor(); cursor >= len(rows) {
+		m.table.SetCursor(0)
+	}
+
 	m.updateTableHeight()
 	m.updateTableColumns()
 }
 
-// updateTableHeight dynamically adjusts table height based on terminal size
+// updateTableHeight sizes the table to fill everything the chrome does not use.
+//
+// The budget comes from chromeFor, the same source renderListView draws from,
+// so the two can never disagree about how many lines are spoken for.
 func (m *Model) updateTableHeight() {
 	if !m.ready {
 		return
 	}
 
-	// Calculate dynamic table height based on terminal size
-	// Layout breakdown:
-	// - ASCII title: 5 lines (1 empty + 4 text lines)
-	// - Update banner : 1 line (if present)
-	// - Search bar: 1 line
-	// - Help text: 1 line
-	// - App margins/spacing: 3 lines
-	// - Safety margin: 3 lines (to ensure UI elements are always visible)
-	// Total reserved: 14 lines minimum to preserve essential UI elements
-	reservedHeight := 14
-	availableHeight := m.height - reservedHeight
+	// The chrome count includes the column header the table draws itself, so
+	// add it back to get the table's own height.
+	height := m.height - chromeFor(m.height).lines() + 1
 
-	// Use total entry count (not filtered) to maintain consistent table size
-	// This prevents the table from shrinking when filtering
-	totalHostCount := len(m.allEntries)
-	if totalHostCount == 0 {
-		totalHostCount = len(m.hosts)
+	const minTableHeight = 1 // the column header alone
+	if height < minTableHeight {
+		height = minTableHeight
 	}
 
-	// Minimum height should be at least 3 rows for basic usability
-	// Even in very small terminals, we want to show at least header + 2 hosts
-	minTableHeight := 4 // 1 header + 3 data rows minimum
-	maxTableHeight := availableHeight
-	if maxTableHeight < minTableHeight {
-		maxTableHeight = minTableHeight
-	}
-
-	tableHeight := 1 // header
-	dataRowsNeeded := totalHostCount
-	maxDataRows := maxTableHeight - 1 // subtract 1 for header
-
-	if dataRowsNeeded <= maxDataRows {
-		// We have enough space for all hosts
-		tableHeight += dataRowsNeeded
-	} else {
-		// We need to limit to available space
-		tableHeight += maxDataRows
-	}
-
-	// Add one extra line to prevent the last host from being hidden
-	// This compensates for table rendering quirks in bubble tea
-	tableHeight += 1
-
-	// Update table height
-	m.table.SetHeight(tableHeight)
+	m.table.SetHeight(height)
 }
 
-// updateTableColumns dynamically adjusts table column widths based on terminal size
+// updateTableColumns applies freshly computed widths and the sort indicator.
 func (m *Model) updateTableColumns() {
 	if !m.ready {
 		return
 	}
 
-	hostsToShow := m.filteredHosts
-	if hostsToShow == nil {
-		hostsToShow = m.hosts
-	}
+	visible, widths := m.computeColumnWidths()
+	titles := m.columnTitles()
 
-	// Use dynamic column width calculation
-	nameWidth, hostnameWidth, tagsWidth, lastLoginWidth := m.calculateDynamicColumnWidths(hostsToShow)
-
-	// Create new columns with updated widths and sort indicators
-	nameTitle := "Name"
-	lastLoginTitle := "Last Login"
-
-	// Add sort indicators based on current sort mode
-	switch m.sortMode {
-	case SortByName:
-		nameTitle += " ↓"
-	case SortByLastUsed:
-		lastLoginTitle += " ↓"
-	}
-
-	columns := []table.Column{
-		{Title: nameTitle, Width: nameWidth},
-		{Title: "Hostname", Width: hostnameWidth},
-		// {Title: "User", Width: userWidth},      // Commented to save space
-		// {Title: "Port", Width: portWidth},      // Commented to save space
-		{Title: "Tags", Width: tagsWidth},
-		{Title: lastLoginTitle, Width: lastLoginWidth},
+	columns := make([]tableColumn, 0, len(visible))
+	for i, column := range visible {
+		columns = append(columns, tableColumn{Title: titles[column], Width: widths[i] + gutterFor(i)})
 	}
 
 	m.table.SetColumns(columns)
-}
-
-// getTableWidth returns the current total width of the table
-func (m *Model) getTableWidth() int {
-	columns := m.table.Columns()
-	totalWidth := 0
-	for _, col := range columns {
-		totalWidth += col.Width
-	}
-	// Add border and separator widths (2 for borders + 3 for column separators)
-	totalWidth += 5
-	return totalWidth
-}
-
-// max returns the maximum of two integers
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-// Legacy functions for compatibility
-
-// calculateNameColumnWidth calculates the optimal width for the Name column
-// based on the longest hostname, with a minimum of 8 and maximum of 40 characters
-func calculateNameColumnWidth(hosts []config.SSHHost) int {
-	maxLength := 8 // Minimum width to accommodate the "Name" header
-
-	for _, host := range hosts {
-		if len(host.Name) > maxLength {
-			maxLength = len(host.Name)
-		}
-	}
-
-	// Add some padding (2 characters) for better visual spacing
-	maxLength += 2
-
-	// Limit the maximum width to avoid extremely large columns
-	if maxLength > 40 {
-		maxLength = 40
-	}
-
-	return maxLength
-}
-
-// calculateTagsColumnWidth calculates the optimal width for the Tags column
-// based on the longest tag string, with a minimum of 8 and maximum of 40 characters
-func calculateTagsColumnWidth(hosts []config.SSHHost) int {
-	maxLength := 8 // Minimum width to accommodate the "Tags" header
-
-	for _, host := range hosts {
-		// Format tags exactly as they appear in the table
-		var tagsStr string
-		if len(host.Tags) > 0 {
-			// Add the # prefix to each tag and join them with spaces
-			var formattedTags []string
-			for _, tag := range host.Tags {
-				formattedTags = append(formattedTags, "#"+tag)
-			}
-			tagsStr = strings.Join(formattedTags, " ")
-		}
-
-		if len(tagsStr) > maxLength {
-			maxLength = len(tagsStr)
-		}
-	}
-
-	// Add some padding (2 characters) for better visual spacing
-	maxLength += 2
-
-	// Limit the maximum width to avoid extremely large columns
-	if maxLength > 40 {
-		maxLength = 40
-	}
-
-	return maxLength
-}
-
-// calculateLastLoginColumnWidth calculates the optimal width for the Last Login column
-// based on the longest time format, with a minimum of 12 and maximum of 20 characters
-func calculateLastLoginColumnWidth(hosts []config.SSHHost, historyManager *history.HistoryManager) int {
-	maxLength := 12 // Minimum width to accommodate the "Last Login" header
-
-	if historyManager != nil {
-		for _, host := range hosts {
-			if lastConnect, exists := historyManager.GetLastConnectionTime(host.Name); exists {
-				timeStr := formatTimeAgo(lastConnect)
-				if len(timeStr) > maxLength {
-					maxLength = len(timeStr)
-				}
-			}
-		}
-	}
-
-	// Add some padding (2 characters) for better visual spacing
-	maxLength += 2
-
-	// Limit the maximum width to avoid extremely large columns
-	if maxLength > 20 {
-		maxLength = 20
-	}
-
-	return maxLength
+	m.table.SetWidth(m.contentWidth())
 }

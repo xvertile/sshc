@@ -1,6 +1,12 @@
 package ui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"fmt"
+	"math"
+	"slices"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 // Theme represents a color theme for the application
 type Theme struct {
@@ -164,14 +170,6 @@ var Themes = []Theme{
 	},
 }
 
-// Current theme colors (set by SetTheme)
-var (
-	PrimaryColor   = "#3B82F6"
-	SecondaryColor = "#64748B"
-	ErrorColor     = "#EF4444"
-	SuccessColor   = "#22C55E"
-)
-
 // CurrentThemeIndex tracks the active theme
 var CurrentThemeIndex = 0
 
@@ -181,11 +179,6 @@ func SetTheme(index int) {
 		return
 	}
 	CurrentThemeIndex = index
-	theme := Themes[index]
-	PrimaryColor = theme.Primary
-	SecondaryColor = theme.Secondary
-	ErrorColor = theme.Error
-	SuccessColor = theme.Success
 }
 
 // SetThemeByName applies a theme by name
@@ -203,184 +196,167 @@ func GetCurrentTheme() Theme {
 	return Themes[CurrentThemeIndex]
 }
 
-// Styles struct centralizes all lipgloss styles
-type Styles struct {
-	// Layout
-	App    lipgloss.Style
-	Header lipgloss.Style
+// anchors returns the theme's saturated colours, in the order they are blended
+// through. Greys are left out, because a grey tag reads as disabled, and Error
+// is left out because the offline glyph owns that colour.
+//
+// A colour is rejected by value rather than by which field it came from: some
+// themes define a nominally coloured field as grey, as Solarized Dark does
+// with SelectionFg.
+func (t Theme) anchors() []string {
+	grey := []string{t.Muted, t.Secondary}
 
-	// Search styles
-	SearchFocused   lipgloss.Style
-	SearchUnfocused lipgloss.Style
+	palette := make([]string, 0, 4)
+	for _, color := range []string{t.Primary, t.Accent, t.Success, t.SelectionFg} {
+		if !slices.Contains(grey, color) && !slices.Contains(palette, color) {
+			palette = append(palette, color)
+		}
+	}
 
-	// Table styles
-	TableFocused   lipgloss.Style
-	TableUnfocused lipgloss.Style
-	Selected       lipgloss.Style
+	if len(palette) == 0 {
+		palette = append(palette, t.Foreground)
+	}
 
-	// Info and help styles
-	SortInfo lipgloss.Style
-	HelpText lipgloss.Style
-
-	// Error and confirmation styles
-	Error     lipgloss.Style
-	ErrorText lipgloss.Style
-
-	// Form styles (for add/edit forms)
-	FormTitle     lipgloss.Style
-	FormField     lipgloss.Style
-	FormHelp      lipgloss.Style
-	FormContainer lipgloss.Style
-	Label         lipgloss.Style
-	FocusedLabel  lipgloss.Style
-	HelpSection   lipgloss.Style
-
-	// Tab styles (for toggle buttons)
-	ActiveTab   lipgloss.Style
-	InactiveTab lipgloss.Style
-
-	// File browser styles
-	DirStyle lipgloss.Style
-
-	// Theme picker styles
-	ThemeItem         lipgloss.Style
-	ThemeItemSelected lipgloss.Style
-	ThemePreview      lipgloss.Style
+	return palette
 }
 
-// NewStyles creates a new Styles struct with the given terminal width
+// blend returns a colour a given fraction of the way around the theme's own
+// anchor colours, mixing between neighbouring pairs.
+//
+// Every result therefore lies on a line between two colours the theme already
+// uses, so tags stay inside the theme's own range. Rotating the hue wheel
+// instead would give Gruvbox — an orange and yellow theme — blue and cyan
+// tags, which is a different palette wearing the theme's name.
+func (t Theme) blend(fraction float64) string {
+	anchors := t.anchors()
+	if len(anchors) == 1 {
+		return anchors[0]
+	}
+
+	// The anchors form a loop, so the last blends back into the first.
+	position := math.Mod(fraction, 1) * float64(len(anchors))
+	index := int(position)
+	weight := position - float64(index)
+
+	return mixHex(anchors[index%len(anchors)], anchors[(index+1)%len(anchors)], weight)
+}
+
+// mixHex blends two "#RRGGBB" colours, weight running from 0 (all of from) to
+// 1 (all of to).
+func mixHex(from, to string, weight float64) string {
+	var a, b [3]int
+	if _, err := fmt.Sscanf(from, "#%02x%02x%02x", &a[0], &a[1], &a[2]); err != nil {
+		return from
+	}
+	if _, err := fmt.Sscanf(to, "#%02x%02x%02x", &b[0], &b[1], &b[2]); err != nil {
+		return from
+	}
+
+	mix := func(i int) int {
+		return int(math.Round(float64(a[i]) + (float64(b[i])-float64(a[i]))*weight))
+	}
+
+	return fmt.Sprintf("#%02X%02X%02X", mix(0), mix(1), mix(2))
+}
+
+// rgbToHSL converts a "#RRGGBB" colour to hue in degrees, plus saturation and
+// lightness in [0,1]. An unparseable colour yields mid grey.
+func rgbToHSL(hex string) (h, s, l float64) {
+	var rgb [3]int
+	if _, err := fmt.Sscanf(hex, "#%02x%02x%02x", &rgb[0], &rgb[1], &rgb[2]); err != nil {
+		return 0, 0, 0.5
+	}
+
+	r, g, b := float64(rgb[0])/255, float64(rgb[1])/255, float64(rgb[2])/255
+	high := math.Max(r, math.Max(g, b))
+	low := math.Min(r, math.Min(g, b))
+	span := high - low
+
+	l = (high + low) / 2
+	if span == 0 {
+		return 0, 0, l // grey: hue is undefined
+	}
+
+	if l > 0.5 {
+		s = span / (2 - high - low)
+	} else {
+		s = span / (high + low)
+	}
+
+	switch high {
+	case r:
+		h = (g - b) / span
+		if g < b {
+			h += 6
+		}
+	case g:
+		h = (b-r)/span + 2
+	default:
+		h = (r-g)/span + 4
+	}
+
+	return h * 60, s, l
+}
+
+// hslToHex converts hue in degrees plus saturation and lightness in [0,1] to
+// a "#RRGGBB" colour.
+func hslToHex(h, s, l float64) string {
+	if s == 0 {
+		channel := int(math.Round(l * 255))
+		return fmt.Sprintf("#%02X%02X%02X", channel, channel, channel)
+	}
+
+	var q float64
+	if l < 0.5 {
+		q = l * (1 + s)
+	} else {
+		q = l + s - l*s
+	}
+	p := 2*l - q
+
+	h /= 360
+	channel := func(t float64) int {
+		switch {
+		case t < 0:
+			t++
+		case t > 1:
+			t--
+		}
+
+		switch {
+		case t < 1.0/6:
+			return int(math.Round((p + (q-p)*6*t) * 255))
+		case t < 1.0/2:
+			return int(math.Round(q * 255))
+		case t < 2.0/3:
+			return int(math.Round((p + (q-p)*(2.0/3-t)*6) * 255))
+		default:
+			return int(math.Round(p * 255))
+		}
+	}
+
+	return fmt.Sprintf("#%02X%02X%02X",
+		channel(h+1.0/3), channel(h), channel(h-1.0/3))
+}
+
+// Styles holds the styles that are threaded through the form constructors.
+//
+// It once carried two dozen fields. The layout rewrite moved colour into
+// layout.go and hosttable.go, which read the active theme directly, and the
+// rest became a second, silently diverging definition of the same colours.
+type Styles struct {
+	// Selected styles the highlighted row of a simple list.
+	Selected lipgloss.Style
+}
+
+// NewStyles builds the styles for the active theme.
 func NewStyles(width int) Styles {
 	theme := GetCurrentTheme()
 
 	return Styles{
-		// Main app container
-		App: lipgloss.NewStyle().
-			Padding(1, 2), // More horizontal breathing room
-
-		// Header style
-		Header: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(theme.Primary)).
-			Bold(true).
-			Align(lipgloss.Center),
-
-		// Search styles
-		SearchFocused: lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color(theme.Primary)).
-			Foreground(lipgloss.Color(theme.Foreground)).
-			Padding(0, 1),
-
-		SearchUnfocused: lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color(theme.Muted)).
-			Foreground(lipgloss.Color(theme.Secondary)).
-			Padding(0, 1),
-
-		// Table styles
-		TableFocused: lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color(theme.Primary)),
-
-		TableUnfocused: lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color(theme.Muted)),
-
-		// Style for selected items - Clean modern highlight
 		Selected: lipgloss.NewStyle().
 			Foreground(lipgloss.Color(theme.SelectionFg)).
 			Background(lipgloss.Color(theme.SelectionBg)).
 			Bold(true),
-
-		// Info styles
-		SortInfo: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(theme.Secondary)).
-			Italic(true),
-
-		HelpText: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(theme.Muted)).
-			PaddingTop(1),
-
-		// Error style
-		Error: lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color(theme.Error)).
-			Padding(0, 1).
-			MarginTop(1),
-
-		// Error text style
-		ErrorText: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(theme.Error)).
-			Bold(true),
-
-		// Form styles
-		FormTitle: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(theme.Background)).
-			Background(lipgloss.Color(theme.Primary)).
-			Bold(true).
-			Padding(0, 1),
-
-		FormField: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(theme.Foreground)),
-
-		FormHelp: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(theme.Muted)).
-			Italic(true),
-
-		FormContainer: lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color(theme.Muted)).
-			Padding(1, 2),
-
-		Label: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(theme.Secondary)),
-
-		FocusedLabel: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(theme.Primary)).
-			Bold(true),
-
-		HelpSection: lipgloss.NewStyle().
-			Padding(1, 2),
-
-		// Tab styles
-		ActiveTab: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(theme.Background)).
-			Background(lipgloss.Color(theme.Primary)).
-			Padding(0, 2).
-			Bold(true),
-
-		InactiveTab: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(theme.Secondary)).
-			Background(lipgloss.Color(theme.SelectionBg)). // Slight background for depth
-			Padding(0, 2),
-
-		DirStyle: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(theme.Accent)).
-			Bold(true),
-
-		// Theme picker styles
-		ThemeItem: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(theme.Foreground)).
-			Padding(0, 2),
-
-		ThemeItemSelected: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(theme.Primary)).
-			Border(lipgloss.NormalBorder(), false, false, false, true). // Left border only
-			BorderForeground(lipgloss.Color(theme.Primary)).
-			Padding(0, 1),
-
-		ThemePreview: lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color(theme.Secondary)).
-			Padding(1, 2),
 	}
 }
-
-// Application ASCII title
-const asciiTitle = `
-              __        
-   __________/ /_  _____
-  / ___/ ___/ __ \/ ___/
- (__  |__  ) / / / /__  
-/____/____/_/ /_/\___/  
-                        
-`

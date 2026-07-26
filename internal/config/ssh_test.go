@@ -1694,3 +1694,21 @@ Host production-server
 		}
 	}
 }
+
+// TestSSHOptionsRoundTrip covers the edit form's display cycle: options are
+// shown in command form for editing and must convert back to config form on
+// save. The reverse conversion existed but was never called, so an edited host
+// was written with "-o Key=Value" as a literal config line.
+func TestSSHOptionsRoundTrip(t *testing.T) {
+	for _, stored := range []string{
+		"Compression yes",
+		"Compression yes\nServerAliveInterval 60",
+		"",
+	} {
+		shown := FormatSSHOptionsForCommand(stored)
+
+		if got := ParseSSHOptionsFromCommand(shown); got != stored {
+			t.Errorf("round trip of %q became %q via %q", stored, got, shown)
+		}
+	}
+}

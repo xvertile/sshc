@@ -3,8 +3,12 @@
 # Version can be overridden via environment variable or command line
 VERSION ?= dev
 
-# Go build flags
-LDFLAGS := -s -w -X github.com/xvertile/sshc/cmd.AppVersion=$(VERSION)
+# Go build flags.
+#
+# Deferred (=) rather than immediate (:=) expansion: build-local sets VERSION
+# as a target-specific variable, which an immediately expanded LDFLAGS would
+# have already baked in as the "dev" default.
+LDFLAGS = -s -w -X github.com/xvertile/sshc/cmd.AppVersion=$(VERSION)
 
 # Build with specific version
 build:

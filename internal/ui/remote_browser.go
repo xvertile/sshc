@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xvertile/sshc/internal/transfer"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/xvertile/sshc/internal/transfer"
 )
 
 // BrowserMode defines whether we're selecting files or directories
@@ -25,25 +25,25 @@ const searchDebounceTime = 400 * time.Millisecond
 
 // remoteBrowserModel is the TUI file browser for remote files
 type remoteBrowserModel struct {
-	host        string
-	configFile  string
-	currentDir  string
-	files       []transfer.RemoteFile // All files from directory
+	host         string
+	configFile   string
+	currentDir   string
+	files        []transfer.RemoteFile // All files from directory
 	visibleFiles []transfer.RemoteFile // Filtered files (respects showHidden)
-	cursor      int
-	selected    string
-	err         string
-	loading     bool
-	mode        BrowserMode
-	styles      Styles
-	width       int
-	height      int
-	session     *transfer.SFTPSession
-	searchMode  bool
-	searchQuery string
-	searchFiles []transfer.RemoteFile // Search results
-	hasLocate   bool                  // Whether locate is available on remote
-	showHidden  bool                  // Whether to show dotfiles
+	cursor       int
+	selected     string
+	err          string
+	loading      bool
+	mode         BrowserMode
+	styles       Styles
+	width        int
+	height       int
+	session      *transfer.SFTPSession
+	searchMode   bool
+	searchQuery  string
+	searchFiles  []transfer.RemoteFile // Search results
+	hasLocate    bool                  // Whether locate is available on remote
+	showHidden   bool                  // Whether to show dotfiles
 
 	// Debounce state
 	pendingSearch   string // Query waiting to be searched
@@ -531,60 +531,51 @@ func (m *remoteBrowserModel) Update(msg tea.Msg) (*remoteBrowserModel, tea.Cmd) 
 }
 
 func (m *remoteBrowserModel) View() string {
-	var b strings.Builder
-	theme := GetCurrentTheme()
+	var lines []string
 
-	// Title
-	b.WriteString(m.styles.Header.Render(fmt.Sprintf("Remote Browser: %s", m.host)))
-	b.WriteString("\n")
-
-	// Current path or search mode indicator
+	// Location line: the search query while searching, the current directory
+	// otherwise. Always one line, so the list below it does not jump.
 	if m.searchMode {
 		cursor := "_"
 		if m.loading {
 			cursor = ""
 		}
+		query := m.searchQuery + cursor
 		if len(m.searchQuery) < 3 {
-			b.WriteString(fmt.Sprintf("  / Search: %s%s (type %d more)\n", m.searchQuery, cursor, 3-len(m.searchQuery)))
-		} else {
-			b.WriteString(fmt.Sprintf("  / Search: %s%s\n", m.searchQuery, cursor))
+			query += muted(fmt.Sprintf("  (type %d more)", 3-len(m.searchQuery)))
 		}
-		b.WriteString("  in: " + m.currentDir + "\n")
+		lines = append(lines, muted("search ")+query+muted("  in "+m.currentDir))
 	} else {
-		b.WriteString(fmt.Sprintf("  \x1b[38;2;%s%s\x1b[0m\n", hexToRGB(theme.Primary), m.currentDir))
+		lines = append(lines, accent(m.currentDir))
 	}
-	b.WriteString("\n")
+	lines = append(lines, "")
 
-	// Error message
-	if m.err != "" {
-		b.WriteString(m.styles.Error.Render("Error: "+m.err) + "\n\n")
+	// The list gets every line the chrome above and below does not claim.
+	visibleHeight := m.height - formChromeLines - len(lines)
+	if visibleHeight < 3 {
+		visibleHeight = 3
 	}
 
-	// Loading indicator or file list
-	if m.loading {
-		if m.searchMode {
-			b.WriteString("  Searching...\n")
-		} else {
-			b.WriteString("  Loading...\n")
-		}
-	} else {
+	switch {
+	case m.loading && m.searchMode:
+		lines = append(lines, muted("  searching…"))
+
+	case m.loading:
+		lines = append(lines, muted("  loading…"))
+
+	default:
 		// Choose which file list to display
 		displayFiles := m.visibleFiles
 		if m.searchMode && len(m.searchFiles) > 0 {
 			displayFiles = m.searchFiles
 		} else if m.searchMode && len(m.searchQuery) >= 3 && m.searchTriggered && len(m.searchFiles) == 0 {
-			b.WriteString("  No files found\n")
+			lines = append(lines, muted("  no files found"))
 			displayFiles = nil
 		} else if m.searchMode {
 			displayFiles = nil
 		}
 
 		if displayFiles != nil {
-			visibleHeight := m.height - 16 // Account for logo + container padding
-			if visibleHeight < 5 {
-				visibleHeight = 5
-			}
-
 			start := 0
 			if m.cursor >= visibleHeight {
 				start = m.cursor - visibleHeight + 1
@@ -597,139 +588,139 @@ func (m *remoteBrowserModel) View() string {
 			for i := start; i < end; i++ {
 				file := displayFiles[i]
 				if m.searchMode {
-					b.WriteString(m.renderSearchResultLine(file, i == m.cursor) + "\n")
+					lines = append(lines, m.renderSearchResultLine(file, i == m.cursor))
 				} else {
-					b.WriteString(m.renderFileLine(file, i == m.cursor) + "\n")
+					lines = append(lines, m.renderFileLine(file, i == m.cursor))
 				}
 			}
-
-			if len(displayFiles) > visibleHeight {
-				b.WriteString(fmt.Sprintf("  [%d/%d]\n", m.cursor+1, len(displayFiles)))
-			}
 		}
 	}
 
-	b.WriteString("\n")
-
-	// Hidden files indicator and help
-	if !m.searchMode {
-		if m.showHidden {
-			b.WriteString("  [hidden: on]\n")
-		} else {
-			b.WriteString("  [hidden: off]\n")
-		}
+	// Position and hidden-file state live in the title line's right slot
+	// rather than costing two more rows.
+	var status []string
+	if count := len(m.visibleFiles); count > 0 && !m.searchMode {
+		status = append(status, fmt.Sprintf("%d/%d", m.cursor+1, count))
+	}
+	if !m.searchMode && m.showHidden {
+		status = append(status, "hidden")
 	}
 
-	if m.searchMode {
-		b.WriteString(" ↑/↓: navigate | Enter: select | Esc: back\n")
-	} else if m.mode == BrowseDirectories {
-		b.WriteString(" ↑/↓: navigate | Enter: open | s: select | r: retry | Esc: cancel\n")
-	} else {
-		b.WriteString(" ↑/↓: navigate | Enter: select | /: search | r: retry | Esc: cancel\n")
+	var hints []keyHint
+	switch {
+	case m.searchMode:
+		hints = []keyHint{{"↑↓", "move"}, {"↵", "select"}, {"esc", "back"}}
+	case m.mode == BrowseDirectories:
+		hints = []keyHint{{"↑↓", "move"}, {"↵", "open"}, {"s", "select"}, {"r", "retry"}, {"esc", "cancel"}}
+	default:
+		hints = []keyHint{{"↑↓", "move"}, {"↵", "select"}, {"/", "search"}, {"r", "retry"}, {"esc", "cancel"}}
 	}
 
-	content := b.String()
+	inner := contentWidth(m.width)
 
-	// Container with primary color border
-	container := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(theme.Primary)).
-		Padding(1, 2).
-		Render(content)
-
-	// Logo outside the container
-	logo := m.styles.Header.Render(asciiTitle)
-
-	// Stack logo and container
-	fullContent := lipgloss.JoinVertical(lipgloss.Center, logo, "", container)
-
-	return lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		fullContent,
-	)
-}
-
-// ANSI escape codes
-const ansiReset = "\x1b[0m"
-
-// hexToRGB converts a hex color like "#FF5500" to RGB format "255;85;0m"
-func hexToRGB(hex string) string {
-	hex = strings.TrimPrefix(hex, "#")
-	if len(hex) != 6 {
-		return "255;255;255m"
+	body := lines
+	if m.err != "" {
+		body = append(body, "", formError(m.err))
 	}
-	r := hexToDec(hex[0:2])
-	g := hexToDec(hex[2:4])
-	b := hexToDec(hex[4:6])
-	return fmt.Sprintf("%d;%d;%dm", r, g, b)
+
+	sections := [][]string{
+		{statusLine(inner, formTitle("browse "+m.host), muted(strings.Join(status, sep)))},
+		body,
+		{keyHints(inner, hints...)},
+	}
+
+	return panel(m.width, m.height, sections, 1)
 }
 
-func hexToDec(hex string) int {
-	var result int
-	fmt.Sscanf(hex, "%x", &result)
-	return result
-}
-
-func (m *remoteBrowserModel) renderFileLine(file transfer.RemoteFile, selected bool) string {
+// browserLine renders one row of the browser.
+//
+// Colours come from the active theme through lipgloss rather than being
+// written as escape sequences by hand. The hand-written version hardcoded
+// "\x1b[38;2;", a truecolor sequence, so the browser ignored the colour
+// profile of terminals that cannot render it.
+func (m *remoteBrowserModel) browserLine(label string, isDir, selected bool) string {
 	theme := GetCurrentTheme()
+
+	// The selected row spans the full width, matching the host list's bar.
+	if selected {
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color(theme.SelectionFg)).
+			Background(lipgloss.Color(theme.SelectionBg)).
+			Bold(true).
+			Width(contentWidth(m.width)).
+			MaxWidth(contentWidth(m.width)).
+			Render("  " + label)
+	}
+
+	color := theme.Foreground
+	if isDir {
+		color = theme.Accent
+	}
+
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color(color)).
+		MaxWidth(contentWidth(m.width)).
+		Render("  " + label)
+}
+
+// renderFileLine renders one directory entry.
+func (m *remoteBrowserModel) renderFileLine(file transfer.RemoteFile, selected bool) string {
 	var icon, name string
 
-	if file.Name == ".." {
-		icon = ".."
-		name = ""
-	} else if file.IsDir {
-		icon = "+"
-		name = file.Name + "/"
-	} else {
-		icon = " "
-		name = file.Name
+	switch {
+	case file.Name == "..":
+		icon, name = "..", ""
+	case file.IsDir:
+		icon, name = "+", file.Name+"/"
+	default:
+		icon, name = " ", file.Name
 	}
 
-	// Simple truncation
-	displayName := icon + " " + name
-	if len(displayName) > 42 {
-		displayName = displayName[:39] + "..."
-	}
-
-	if selected {
-		// Use theme selection colors
-		return fmt.Sprintf("\x1b[38;2;%s\x1b[48;2;%s  %s%s",
-			hexToRGB(theme.SelectionFg), hexToRGB(theme.SelectionBg), displayName, ansiReset)
-	}
-	if file.IsDir {
-		// Use theme accent for directories
-		return fmt.Sprintf("\x1b[38;2;%s  %s%s", hexToRGB(theme.Accent), displayName, ansiReset)
-	}
-	// Regular files use foreground color
-	return fmt.Sprintf("\x1b[38;2;%s  %s%s", hexToRGB(theme.Foreground), displayName, ansiReset)
+	// Two columns for the caret, two for the icon and its space.
+	return m.browserLine(icon+" "+truncateEnd(name, contentWidth(m.width)-2), file.IsDir, selected)
 }
 
-// renderSearchResultLine renders a search result showing the full path
+// renderSearchResultLine renders a search result showing the full path.
 func (m *remoteBrowserModel) renderSearchResultLine(file transfer.RemoteFile, selected bool) string {
-	theme := GetCurrentTheme()
 	icon := "+"
 	if !file.IsDir {
 		icon = " "
 	}
 
-	path := file.Path
-	if len(path) > 50 {
-		path = "..." + path[len(path)-47:]
-	}
+	// Paths are trimmed from the front: the tail names the file.
+	return m.browserLine(icon+" "+truncateStart(file.Path, contentWidth(m.width)-2), file.IsDir, selected)
+}
 
-	displayName := icon + " " + path
+// truncateEnd shortens text from the right, keeping the beginning.
+func truncateEnd(text string, width int) string {
+	runes := []rune(text)
 
-	if selected {
-		return fmt.Sprintf("\x1b[38;2;%s\x1b[48;2;%s  %s%s",
-			hexToRGB(theme.SelectionFg), hexToRGB(theme.SelectionBg), displayName, ansiReset)
+	switch {
+	case width <= 0:
+		return ""
+	case len(runes) <= width:
+		return text
+	case width == 1:
+		return "…"
+	default:
+		return string(runes[:width-1]) + "…"
 	}
-	if file.IsDir {
-		return fmt.Sprintf("\x1b[38;2;%s  %s%s", hexToRGB(theme.Accent), displayName, ansiReset)
+}
+
+// truncateStart shortens text from the left, keeping the end.
+func truncateStart(text string, width int) string {
+	runes := []rune(text)
+
+	switch {
+	case width <= 0:
+		return ""
+	case len(runes) <= width:
+		return text
+	case width == 1:
+		return "…"
+	default:
+		return "…" + string(runes[len(runes)-width+1:])
 	}
-	return fmt.Sprintf("\x1b[38;2;%s  %s%s", hexToRGB(theme.Foreground), displayName, ansiReset)
 }
 
 func formatSize(size int64) string {

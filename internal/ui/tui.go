@@ -2,17 +2,14 @@ package ui
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/xvertile/sshc/internal/config"
 	"github.com/xvertile/sshc/internal/connectivity"
 	"github.com/xvertile/sshc/internal/history"
 
-	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // NewModel creates a new TUI model with the given SSH hosts
@@ -50,152 +47,46 @@ func NewModel(hosts []config.SSHHost, configFile, currentVersion string) Model {
 		}
 	}
 
-	// Create initial styles (will be updated on first WindowSizeMsg)
-	styles := NewStyles(80) // Default width
-
-	// Initialize ping manager with 5 second timeout
-	pingManager := connectivity.NewPingManager(5 * time.Second)
-
 	// Determine sort mode from config
 	sortMode := SortByName
 	if appConfig != nil && appConfig.SortMode == "recent" {
 		sortMode = SortByLastUsed
 	}
 
-	// Create the model with sorting from config
+	// The filter line renders its own label, so the input carries no prompt.
+	searchInput := textinput.New()
+	searchInput.Placeholder = "name, hostname or #tag"
+	searchInput.Prompt = ""
+	searchInput.CharLimit = 50
+	searchInput.Width = 40
+
 	m := Model{
 		hosts:          hosts,
 		k8sHosts:       k8sHosts,
 		historyManager: historyManager,
-		pingManager:    pingManager,
+		pingManager:    connectivity.NewPingManager(5 * time.Second),
 		sortMode:       sortMode,
 		configFile:     configFile,
 		currentVersion: currentVersion,
 		appConfig:      appConfig,
-		styles:         styles,
+		searchInput:    searchInput,
+		styles:         NewStyles(80),
 		width:          80,
 		height:         24,
 		ready:          false,
 		viewMode:       ViewList,
 	}
 
-	// Sort hosts according to the default sort mode
-	sortedHosts := m.sortHosts(hosts)
+	// Build the unified SSH + K8s entry list, sorted by the active sort mode.
+	m.rebuildEntries()
 
-	// Create the search input
-	ti := textinput.New()
-	ti.Placeholder = "Search hosts or tags..."
-	ti.CharLimit = 50
-	ti.Width = 25
+	// Columns are sized on the first WindowSizeMsg, once the real terminal
+	// width is known; the titles are correct from the start.
+	m.table.Focus()
+	m.table.SetHeight(10)
+	m.updateTableStyles()
 
-	// Use dynamic column width calculation (will fallback to static if width not available)
-	nameWidth, hostnameWidth, tagsWidth, lastLoginWidth := m.calculateDynamicColumnWidths(sortedHosts)
-
-	// Create table columns
-	columns := []table.Column{
-		{Title: "Name", Width: nameWidth},
-		{Title: "Hostname", Width: hostnameWidth},
-		// {Title: "User", Width: 12},                  // Commented to save space
-		// {Title: "Port", Width: 6},                   // Commented to save space
-		{Title: "Tags", Width: tagsWidth},
-		{Title: "Last Login", Width: lastLoginWidth},
-	}
-
-	// Build unified entries for SSH and K8s hosts
-	var allEntries []HostEntry
-
-	// Add SSH hosts as entries
-	for i := range sortedHosts {
-		host := &sortedHosts[i]
-		allEntries = append(allEntries, HostEntry{
-			Name:     host.Name,
-			IsK8s:    false,
-			SSHHost:  host,
-			Tags:     host.Tags,
-			Hostname: host.Hostname,
-		})
-	}
-
-	// Add K8s hosts as entries
-	for i := range k8sHosts {
-		host := &k8sHosts[i]
-		allEntries = append(allEntries, HostEntry{
-			Name:     host.Name,
-			IsK8s:    true,
-			K8sHost:  host,
-			Tags:     host.Tags,
-			Hostname: fmt.Sprintf("%s/%s", host.Namespace, host.Pod),
-		})
-	}
-
-	// Store entries in model
-	m.allEntries = allEntries
-	m.filteredEntries = allEntries
-
-	// Convert entries to table rows
-	var rows []table.Row
-	for _, entry := range allEntries {
-		// Get status indicator (only for SSH hosts)
-		var statusIndicator string
-		if entry.IsK8s {
-			statusIndicator = "k" // Kubernetes indicator
-		} else {
-			statusIndicator = m.getPingStatusIndicator(entry.Name)
-		}
-
-		// Format tags for display
-		var tagsStr string
-		if len(entry.Tags) > 0 {
-			// Add the # prefix to each tag and join them with spaces
-			var formattedTags []string
-			for _, tag := range entry.Tags {
-				formattedTags = append(formattedTags, "#"+tag)
-			}
-			tagsStr = strings.Join(formattedTags, " ")
-		}
-
-		// Format last login information
-		var lastLoginStr string
-		if historyManager != nil {
-			if lastConnect, exists := historyManager.GetLastConnectionTime(entry.Name); exists {
-				lastLoginStr = formatTimeAgo(lastConnect)
-			}
-		}
-
-		rows = append(rows, table.Row{
-			statusIndicator + " " + entry.Name,
-			entry.Hostname,
-			// host.User,        // Commented to save space
-			// host.Port,        // Commented to save space
-			tagsStr,
-			lastLoginStr,
-		})
-	}
-
-	// Create the table with initial height (will be updated on first WindowSizeMsg)
-	t := table.New(
-		table.WithColumns(columns),
-		table.WithRows(rows),
-		table.WithFocused(true),
-		table.WithHeight(10), // Initial height, will be recalculated dynamically
-	)
-
-	// Style the table
-	s := table.DefaultStyles()
-	s.Header = s.Header.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color(SecondaryColor)).
-		BorderBottom(true).
-		Bold(false)
-	s.Selected = m.styles.Selected
-
-	t.SetStyles(s)
-
-	// Update the model with the table and other properties
-	m.table = t
-	m.searchInput = ti
-	m.filteredHosts = sortedHosts
-	m.filteredK8sHosts = k8sHosts
+	m.updateTableRows()
 
 	// Start in search mode if configured
 	if appConfig != nil && appConfig.StartInSearchMode {
@@ -204,11 +95,7 @@ func NewModel(hosts []config.SSHHost, configFile, currentVersion string) Model {
 		m.table.Blur()
 	}
 
-	// Initialize table styles based on initial focus state
 	m.updateTableStyles()
-
-	// The table height will be properly set on the first WindowSizeMsg
-	// when m.ready becomes true and actual terminal dimensions are known
 
 	return m
 }

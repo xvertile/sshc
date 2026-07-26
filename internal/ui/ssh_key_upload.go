@@ -368,119 +368,67 @@ func (m *sshKeyUploadModel) View() string {
 	theme := GetCurrentTheme()
 
 	var b strings.Builder
+	var hints []keyHint
+	errMessage := m.err
 
-	// Title
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary))
-	b.WriteString(titleStyle.Render("UPLOAD SSH KEY"))
-	b.WriteString("\n\n")
-
-	// Host info
-	hostStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Accent))
-	b.WriteString(hostStyle.Render(fmt.Sprintf("Host: %s", m.hostName)))
-	b.WriteString("\n\n")
-
-	// Success message and config update prompt
-	if m.success != "" {
-		successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
-		b.WriteString(successStyle.Render(m.success))
+	switch {
+	case m.success != "":
+		b.WriteString(lipgloss.NewStyle().
+			Foreground(lipgloss.Color(theme.Success)).
+			Bold(true).
+			Render("✓ " + m.success))
 		b.WriteString("\n\n")
 
 		if m.askingConfigUpdate {
-			// Show config update prompt
-			questionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Foreground))
-			b.WriteString(questionStyle.Render("Update SSH config to use this key automatically?"))
-			b.WriteString("\n")
-			keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
 			privateKey := strings.TrimSuffix(m.uploadedKeyPath, ".pub")
-			b.WriteString(keyStyle.Render(fmt.Sprintf("  IdentityFile %s", privateKey)))
-			b.WriteString("\n\n")
-
-			helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
-			b.WriteString(helpStyle.Render("y: yes, update config • n: no, skip"))
+			b.WriteString("Update SSH config to use this key automatically?\n")
+			b.WriteString(muted("  IdentityFile " + privateKey))
+			hints = []keyHint{{"y", "update config"}, {"n", "skip"}}
 		} else {
-			helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
-			b.WriteString(helpStyle.Render("Press any key to continue..."))
+			hints = []keyHint{{"any key", "continue"}}
 		}
-	} else if m.uploading {
-		b.WriteString("Uploading key...")
-	} else {
-		// Mode tabs
-		selectTab := "[ Select Key ]"
-		pasteTab := "[ Paste Key ]"
 
-		if m.mode == KeyOptionSelect {
-			selectTab = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary)).Render(selectTab)
-			pasteTab = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted)).Render(pasteTab)
-		} else {
-			selectTab = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted)).Render(selectTab)
-			pasteTab = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary)).Render(pasteTab)
+	case m.uploading:
+		b.WriteString(accent("uploading key…"))
+
+	default:
+		mode := 0
+		if m.mode != KeyOptionSelect {
+			mode = 1
 		}
-		b.WriteString(selectTab + "  " + pasteTab + "  (Tab to switch)")
+		b.WriteString(toggleRow([]string{"Select Key", "Paste Key"}, mode))
 		b.WriteString("\n\n")
 
 		if m.mode == KeyOptionSelect {
-			// Show available keys
 			if len(m.availableKeys) == 0 {
-				b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted)).Render("No SSH keys found in ~/.ssh/"))
-				b.WriteString("\n")
+				b.WriteString(muted("no SSH keys found in ~/.ssh/"))
 			} else {
+				selectedStyle := lipgloss.NewStyle().
+					Bold(true).
+					Foreground(lipgloss.Color(theme.SelectionFg)).
+					Background(lipgloss.Color(theme.SelectionBg))
+
 				for i, key := range m.availableKeys {
 					keyName := filepath.Base(key)
 					if i == m.selectedKey {
-						b.WriteString(lipgloss.NewStyle().
-							Bold(true).
-							Foreground(lipgloss.Color(theme.SelectionFg)).
-							Background(lipgloss.Color(theme.SelectionBg)).
-							Render(fmt.Sprintf(" > %s ", keyName)))
+						b.WriteString(selectedStyle.Render(" ▸ " + keyName + " "))
 					} else {
-						b.WriteString(fmt.Sprintf("   %s", keyName))
+						b.WriteString("   " + keyName)
 					}
 					b.WriteString("\n")
 				}
 			}
+			hints = []keyHint{{"↑↓", "move"}, {"↵", "upload"}, {"tab", "paste mode"}, {"esc", "cancel"}}
 		} else {
-			// Show paste input
-			b.WriteString("Paste your public key:\n")
+			b.WriteString(muted("paste your public key"))
+			b.WriteString("\n")
 			b.WriteString(m.pasteInput.View())
-			b.WriteString("\n")
-		}
-
-		// Error message
-		if m.err != "" {
-			b.WriteString("\n")
-			errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-			b.WriteString(errorStyle.Render("Error: " + m.err))
-		}
-
-		// Help
-		b.WriteString("\n\n")
-		helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
-		if m.mode == KeyOptionSelect {
-			b.WriteString(helpStyle.Render("↑/↓: navigate • Enter: upload • Tab: paste mode • Esc: cancel"))
-		} else {
-			b.WriteString(helpStyle.Render("Enter: upload • Tab: select mode • Esc: cancel"))
+			hints = []keyHint{{"↵", "upload"}, {"tab", "select mode"}, {"esc", "cancel"}}
 		}
 	}
 
-	content := b.String()
+	body := strings.TrimRight(b.String(), "\n")
 
-	// Container
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(theme.Primary)).
-		Padding(1, 2)
-
-	// Logo
-	logo := m.styles.Header.Render(asciiTitle)
-
-	// Stack logo and container
-	fullContent := lipgloss.JoinVertical(lipgloss.Center, logo, "", box.Render(content))
-
-	return lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		fullContent,
-	)
+	return formScreen(m.width, m.height,
+		fmt.Sprintf("upload key to %s", m.hostName), body, errMessage, hints...)
 }

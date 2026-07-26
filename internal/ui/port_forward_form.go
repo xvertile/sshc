@@ -5,10 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/xvertile/sshc/internal/history"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"github.com/xvertile/sshc/internal/history"
 )
 
 // Input field indices for port forward form
@@ -37,6 +36,7 @@ type portForwardModel struct {
 type portForwardSubmitMsg struct {
 	err     error
 	sshArgs []string
+	summary string // the forward in words, for the session view
 }
 
 // portForwardCancelMsg is sent when the port forward form is cancelled
@@ -214,64 +214,42 @@ func (m *portForwardModel) updateInputVisibility() {
 }
 
 func (m *portForwardModel) View() string {
-	theme := GetCurrentTheme()
 	var b strings.Builder
-
-	// Title
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary))
-	b.WriteString(titleStyle.Render("PORT FORWARDING"))
-	b.WriteString("\n\n")
-
-	// Host info
-	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Accent))
-	b.WriteString(infoStyle.Render(fmt.Sprintf("Host: %s", m.hostName)))
-	b.WriteString("\n\n")
-
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted)).Width(16)
-	focusedLabelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary)).Width(16)
-	requiredStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
 
 	// Helper to render a field
 	renderField := func(label string, inputIndex int, required bool) {
-		l := label
-		if required {
-			l += requiredStyle.Render("*")
-		}
-		if m.focused == inputIndex {
-			b.WriteString(focusedLabelStyle.Render(l))
-			b.WriteString(" ")
-			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary)).Render("> "))
-		} else {
-			b.WriteString(labelStyle.Render(l))
-			b.WriteString("   ")
-		}
-		b.WriteString(m.inputs[inputIndex].View())
+		b.WriteString(formField(
+			label,
+			required,
+			m.focused == inputIndex,
+			m.inputs[inputIndex].View(),
+			formLabelWidth,
+		))
 		b.WriteString("\n")
 	}
 
-	// Forward type
+	// Forward type, and the ssh flag it maps to
 	renderField("Type", pfTypeInput, false)
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
-	b.WriteString(helpStyle.Render("                    ←/→ to change type"))
+	b.WriteString(muted("  ←/→ to change type"))
 	b.WriteString("\n\n")
 
 	switch m.forwardType {
 	case LocalForward:
-		b.WriteString(helpStyle.Render("ssh -L [bind:]local_port:remote_host:remote_port"))
+		b.WriteString(muted("ssh -L [bind:]local_port:remote_host:remote_port"))
 		b.WriteString("\n\n")
 		renderField("Local Port", pfLocalPortInput, true)
 		renderField("Remote Host", pfRemoteHostInput, false)
 		renderField("Remote Port", pfRemotePortInput, true)
 
 	case RemoteForward:
-		b.WriteString(helpStyle.Render("ssh -R [bind:]remote_port:local_host:local_port"))
+		b.WriteString(muted("ssh -R [bind:]remote_port:local_host:local_port"))
 		b.WriteString("\n\n")
 		renderField("Remote Port", pfLocalPortInput, true)
 		renderField("Local Host", pfRemoteHostInput, false)
 		renderField("Local Port", pfRemotePortInput, true)
 
 	case DynamicForward:
-		b.WriteString(helpStyle.Render("ssh -D [bind:]port (SOCKS proxy)"))
+		b.WriteString(muted("ssh -D [bind:]port (SOCKS proxy)"))
 		b.WriteString("\n\n")
 		renderField("SOCKS Port", pfLocalPortInput, true)
 	}
@@ -279,37 +257,13 @@ func (m *portForwardModel) View() string {
 	b.WriteString("\n")
 	renderField("Bind Address", pfBindAddressInput, false)
 
-	// Error message
-	if m.err != "" {
-		b.WriteString("\n")
-		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-		b.WriteString(errorStyle.Render("Error: " + m.err))
-	}
+	body := strings.TrimRight(b.String(), "\n")
 
-	// Help
-	b.WriteString("\n\n")
-	b.WriteString(helpStyle.Render("↑/↓: navigate • Enter: connect • Esc: cancel"))
-
-	content := b.String()
-
-	// Container with border
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(theme.Primary)).
-		Padding(1, 2)
-
-	// Logo
-	logo := m.styles.Header.Render(asciiTitle)
-
-	// Stack logo and container
-	fullContent := lipgloss.JoinVertical(lipgloss.Center, logo, "", box.Render(content))
-
-	return lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		fullContent,
+	return formScreen(m.width, m.height,
+		fmt.Sprintf("port forward %s", m.hostName), body, m.err,
+		keyHint{"↵", "connect"},
+		keyHint{"↑↓", "move"},
+		keyHint{"esc", "cancel"},
 	)
 }
 
@@ -416,10 +370,16 @@ func (m *portForwardModel) submitForm() tea.Cmd {
 		}
 
 		// Add hostname
-		sshArgs = append(sshArgs, m.hostName)
+		// -N starts no remote shell: the process exists only to hold the
+		// tunnel open. ExitOnForwardFailure makes ssh exit if the port cannot
+		// be bound, rather than sitting there connected but not forwarding.
+		sshArgs = append(sshArgs, "-N", "-o", "ExitOnForwardFailure=yes", m.hostName)
 
-		// Return success with the SSH command to execute
-		return portForwardSubmitMsg{err: nil, sshArgs: sshArgs}
+		return portForwardSubmitMsg{
+			err:     nil,
+			sshArgs: sshArgs,
+			summary: m.forwardSummary(localPort, remoteHost, remotePort, bindAddress),
+		}
 	}
 }
 
@@ -502,5 +462,22 @@ func (m *portForwardModel) loadPreviousConfig() {
 	}
 	if config.BindAddress != "" {
 		m.inputs[pfBindAddressInput].SetValue(config.BindAddress)
+	}
+}
+
+// forwardSummary describes the forward in words for the session view.
+func (m *portForwardModel) forwardSummary(localPort, remoteHost, remotePort, bindAddress string) string {
+	bind := bindAddress
+	if bind == "" {
+		bind = "localhost"
+	}
+
+	switch m.forwardType {
+	case RemoteForward:
+		return fmt.Sprintf("%s:%s on the remote → %s:%s here", bind, localPort, remoteHost, remotePort)
+	case DynamicForward:
+		return fmt.Sprintf("SOCKS proxy on %s:%s", bind, localPort)
+	default:
+		return fmt.Sprintf("%s:%s here → %s:%s on the remote", bind, localPort, remoteHost, remotePort)
 	}
 }

@@ -12,12 +12,11 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // Input field indices for transfer form
 const (
-	tfDirectionInput = iota
+	tfDirectionInput  = iota
 	tfUploadTypeInput // File or Folder toggle (only shown for uploads)
 	tfLocalPathInput
 	tfRemotePathInput
@@ -96,6 +95,8 @@ func NewTransferForm(hostName string, styles Styles, width, height int, configFi
 	inputs[tfRemotePathInput].Placeholder = "~/"
 	inputs[tfRemotePathInput].CharLimit = 500
 	inputs[tfRemotePathInput].Width = 60
+
+	fitInputs(inputs, width)
 
 	m := &transferFormModel{
 		inputs:         inputs,
@@ -414,113 +415,48 @@ func (m *transferFormModel) applyHistoryItem(idx int) {
 }
 
 func (m *transferFormModel) View() string {
-	theme := GetCurrentTheme()
 	var sections []string
 
-	// Title
-	title := m.styles.Header.Render("File Transfer")
-	sections = append(sections, title)
-
-	// Host info
-	hostInfo := fmt.Sprintf("Host: %s", m.hostName)
-	sections = append(sections, m.styles.HelpText.Render(hostInfo))
-	sections = append(sections, "")
-
-	// Error message
-	if m.err != "" {
-		sections = append(sections, m.styles.Error.Render("Error: "+m.err))
-		sections = append(sections, "")
+	// Direction, as an inline toggle rather than a label/button/hint stack
+	direction := 0
+	if m.direction == transfer.Download {
+		direction = 1
 	}
+	sections = append(sections, formField("Direction", false, m.focused == tfDirectionInput,
+		toggleRow([]string{"↑ Upload", "↓ Download"}, direction), formLabelWidth))
 
-	// Direction selector
-	dirLabel := "Direction:"
-	if m.focused == tfDirectionInput {
-		dirLabel = m.styles.FocusedLabel.Render(dirLabel)
-	} else {
-		dirLabel = m.styles.Label.Render(dirLabel)
-	}
-	sections = append(sections, dirLabel)
-
-	// Direction buttons
-	uploadBtn := " ↑ Upload "
-	downloadBtn := " ↓ Download "
+	// Upload type selector (only meaningful for uploads)
 	if m.direction == transfer.Upload {
-		uploadBtn = m.styles.ActiveTab.Render(uploadBtn)
-		downloadBtn = m.styles.InactiveTab.Render(downloadBtn)
-	} else {
-		uploadBtn = m.styles.InactiveTab.Render(uploadBtn)
-		downloadBtn = m.styles.ActiveTab.Render(downloadBtn)
-	}
-	dirButtons := lipgloss.JoinHorizontal(lipgloss.Center, uploadBtn, "  ", downloadBtn)
-	sections = append(sections, dirButtons)
-	if m.focused == tfDirectionInput {
-		sections = append(sections, m.styles.HelpText.Render("Use ←/→ to change direction"))
-	}
-	sections = append(sections, "")
-
-	// Upload type selector (only shown for uploads)
-	if m.direction == transfer.Upload {
-		typeLabel := "Upload Type:"
-		if m.focused == tfUploadTypeInput {
-			typeLabel = m.styles.FocusedLabel.Render(typeLabel)
-		} else {
-			typeLabel = m.styles.Label.Render(typeLabel)
+		uploadType := 0
+		if m.uploadType != UploadFile {
+			uploadType = 1
 		}
-		sections = append(sections, typeLabel)
-
-		// File/Folder toggle buttons
-		fileBtn := "  File  "
-		folderBtn := "  Folder  "
-		if m.uploadType == UploadFile {
-			fileBtn = m.styles.ActiveTab.Render(fileBtn)
-			folderBtn = m.styles.InactiveTab.Render(folderBtn)
-		} else {
-			fileBtn = m.styles.InactiveTab.Render(fileBtn)
-			folderBtn = m.styles.ActiveTab.Render(folderBtn)
-		}
-		typeButtons := lipgloss.JoinHorizontal(lipgloss.Center, fileBtn, "  ", folderBtn)
-		sections = append(sections, typeButtons)
-		if m.focused == tfUploadTypeInput {
-			sections = append(sections, m.styles.HelpText.Render("Use ←/→ to change type"))
-		}
-		sections = append(sections, "")
+		sections = append(sections, formField("Upload Type", false, m.focused == tfUploadTypeInput,
+			toggleRow([]string{"File", "Folder"}, uploadType), formLabelWidth))
 	}
 
-	// Local path
-	localLabel := "Local Path:"
-	if m.focused == tfLocalPathInput {
-		localLabel = m.styles.FocusedLabel.Render(localLabel)
-	} else {
-		localLabel = m.styles.Label.Render(localLabel)
-	}
-	sections = append(sections, localLabel)
-	sections = append(sections, m.inputs[tfLocalPathInput].View())
+	sections = append(sections, formField("Local Path", false, m.focused == tfLocalPathInput,
+		m.inputs[tfLocalPathInput].View(), formLabelWidth))
 
-	// Show file picker hint when focused on local path
-	if m.focused == tfLocalPathInput && transfer.IsPickerAvailable() {
-		sections = append(sections, m.styles.HelpText.Render("Press 'o' to browse"))
-	}
-	sections = append(sections, "")
+	sections = append(sections, formField("Remote Path", false, m.focused == tfRemotePathInput,
+		m.inputs[tfRemotePathInput].View(), formLabelWidth))
 
-	// Remote path
-	remoteLabel := "Remote Path:"
-	if m.focused == tfRemotePathInput {
-		remoteLabel = m.styles.FocusedLabel.Render(remoteLabel)
-	} else {
-		remoteLabel = m.styles.Label.Render(remoteLabel)
+	// Contextual hint for the focused field, on a line reserved either way so
+	// the fields below it do not jump as focus moves.
+	hint := ""
+	switch {
+	case m.focused == tfDirectionInput || m.focused == tfUploadTypeInput:
+		hint = "←/→ to change"
+	case m.focused == tfLocalPathInput && transfer.IsPickerAvailable():
+		hint = "o to browse local files"
+	case m.focused == tfRemotePathInput:
+		hint = "o to browse remote files"
 	}
-	sections = append(sections, remoteLabel)
-	sections = append(sections, m.inputs[tfRemotePathInput].View())
-
-	// Show file picker hint when focused on remote path
-	if m.focused == tfRemotePathInput {
-		sections = append(sections, m.styles.HelpText.Render("Press 'o' to browse remote files"))
-	}
-	sections = append(sections, "")
+	sections = append(sections, "", muted("  "+hint))
 
 	// Transfer history
 	if m.showHistory && len(m.historyItems) > 0 {
-		sections = append(sections, m.styles.Label.Render("Recent Transfers (press 1-5 to select):"))
+		sections = append(sections, "", accent("recent transfers")+muted("  press 1-5 to select"))
 
 		maxItems := 5
 		if len(m.historyItems) < maxItems {
@@ -533,51 +469,29 @@ func (m *transferFormModel) View() string {
 			if item.Direction == "download" {
 				arrow = "↓"
 			}
-			timeAgo := formatTimeAgo(item.Timestamp)
 
-			historyLine := fmt.Sprintf(" %d. %s %s → %s (%s)",
+			historyLine := fmt.Sprintf(" %d %s %s → %s  %s",
 				i+1, arrow,
 				truncatePath(item.LocalPath, 25),
 				truncatePath(item.RemotePath, 25),
-				timeAgo)
+				formatTimeCompact(item.Timestamp))
 
 			if i == m.historyIndex {
 				historyLine = m.styles.Selected.Render(historyLine)
 			} else {
-				historyLine = m.styles.HelpText.Render(historyLine)
+				historyLine = muted(historyLine)
 			}
 			sections = append(sections, historyLine)
 		}
-		sections = append(sections, "")
 	}
 
-	// Help text
-	helpText := " Tab/↓: next • Shift+Tab/↑: prev • Enter: transfer • Ctrl+H: toggle history • Esc: cancel"
-	sections = append(sections, m.styles.HelpText.Render(helpText))
-
-	// Join all sections
-	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
-
-	// Container with primary color border
-	container := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(theme.Primary)).
-		Padding(1, 2).
-		Render(content)
-
-	// Logo outside the container
-	logo := m.styles.Header.Render(asciiTitle)
-
-	// Stack logo and container
-	fullContent := lipgloss.JoinVertical(lipgloss.Center, logo, "", container)
-
-	// Center the form
-	return lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		fullContent,
+	return formScreen(m.width, m.height,
+		fmt.Sprintf("transfer %s", m.hostName),
+		strings.Join(sections, "\n"), m.err,
+		keyHint{"↵", "transfer"},
+		keyHint{"tab", "next"},
+		keyHint{"ctrl+h", "history"},
+		keyHint{"esc", "cancel"},
 	)
 }
 

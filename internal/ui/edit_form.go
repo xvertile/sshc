@@ -9,7 +9,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 const (
@@ -29,7 +28,6 @@ type editFormModel struct {
 	inputs           []textinput.Model
 	focusArea        int // 0=hosts, 1=properties
 	focused          int
-	currentTab       int // 0=General, 1=Advanced (only applies when focusArea == focusAreaProperties)
 	err              string
 	styles           Styles
 	originalName     string
@@ -166,7 +164,6 @@ func NewEditForm(hostName string, styles Styles, width, height int, configFile s
 		inputs:           inputs,
 		focusArea:        focusAreaHosts, // Start with hosts focused for multi-host editing
 		focused:          0,
-		currentTab:       0, // Start on General tab
 		originalName:     hostName,
 		originalHosts:    hostNames,
 		host:             host,
@@ -250,172 +247,55 @@ func (m *editFormModel) updateFocus() tea.Cmd {
 	return textinput.Blink
 }
 
-// getPropertiesForCurrentTab returns the property input indices for the current tab
-func (m *editFormModel) getPropertiesForCurrentTab() []int {
-	switch m.currentTab {
-	case 0: // General
-		return []int{0, 1, 2, 3, 4, 6} // hostname, user, port, identity, proxyjump, tags
-	case 1: // Advanced
-		return []int{5, 7, 8} // options, remotecommand, requesttty
-	default:
-		return []int{0, 1, 2, 3, 4, 6}
-	}
-}
-
-// getFirstPropertyForTab returns the first property index for a given tab
-func (m *editFormModel) getFirstPropertyForTab(tab int) int {
-	properties := []int{0, 1, 2, 3, 4, 6} // General tab
-	if tab == 1 {
-		properties = []int{5, 7, 8} // Advanced tab
-	}
-	if len(properties) > 0 {
-		return properties[0]
-	}
-	return 0
-}
-
-// handleEditNavigation handles navigation in the edit form with tab support
+// handleEditNavigation moves focus through the host names and then every
+// property in display order, wrapping back to the host names at the end.
 func (m *editFormModel) handleEditNavigation(key string) tea.Cmd {
+	back := key == "up" || key == "shift+tab"
+
 	if m.focusArea == focusAreaHosts {
-		// Navigate in hosts area
-		if key == "up" || key == "shift+tab" {
+		if back {
 			m.focused--
 		} else {
 			m.focused++
 		}
 
-		if m.focused >= len(m.hostInputs) {
-			// Move to properties area, keep current tab
+		switch {
+		case m.focused >= len(m.hostInputs):
 			m.focusArea = focusAreaProperties
-			// Keep the current tab instead of forcing it to 0
-			m.focused = m.getFirstPropertyForTab(m.currentTab)
-		} else if m.focused < 0 {
-			m.focused = len(m.hostInputs) - 1
+			m.focused = editFields[0].index
+		case m.focused < 0:
+			// Already at the very top: stay put.
+			m.focused = 0
 		}
+
+		return m.updateFocus()
+	}
+
+	position := editFieldPosition(m.focused)
+
+	// Enter on the final field submits, as it does in the other forms.
+	if key == "enter" && position == len(editFields)-1 {
+		return m.submitEditForm()
+	}
+
+	if back {
+		position--
 	} else {
-		// Navigate in properties area within current tab
-		currentTabProperties := m.getPropertiesForCurrentTab()
+		position++
+	}
 
-		// Find current position within the tab
-		currentPos := 0
-		for i, prop := range currentTabProperties {
-			if prop == m.focused {
-				currentPos = i
-				break
-			}
-		}
-
-		// Handle form submission on last field of Advanced tab
-		if key == "enter" && m.currentTab == 1 && currentPos == len(currentTabProperties)-1 {
-			return m.submitEditForm()
-		}
-
-		// Navigate within current tab
-		if key == "up" || key == "shift+tab" {
-			currentPos--
-		} else {
-			currentPos++
-		}
-
-		// Handle transitions between areas and tabs
-		if currentPos >= len(currentTabProperties) {
-			// Move to next area/tab
-			if m.currentTab == 0 {
-				// Move to advanced tab
-				m.currentTab = 1
-				m.focused = m.getFirstPropertyForTab(1)
-			} else {
-				// Move back to hosts area
-				m.focusArea = focusAreaHosts
-				m.focused = 0
-			}
-		} else if currentPos < 0 {
-			// Move to previous area/tab
-			if m.currentTab == 1 {
-				// Move to general tab
-				m.currentTab = 0
-				properties := m.getPropertiesForCurrentTab()
-				m.focused = properties[len(properties)-1]
-			} else {
-				// Move to hosts area
-				m.focusArea = focusAreaHosts
-				m.focused = len(m.hostInputs) - 1
-			}
-		} else {
-			m.focused = currentTabProperties[currentPos]
-		}
+	switch {
+	case position >= len(editFields):
+		// Already at the very bottom: stay put.
+		m.focused = editFields[len(editFields)-1].index
+	case position < 0:
+		m.focusArea = focusAreaHosts
+		m.focused = len(m.hostInputs) - 1
+	default:
+		m.focused = editFields[position].index
 	}
 
 	return m.updateFocus()
-}
-
-// getMinimumHeight calculates the minimum height needed to display the edit form
-func (m *editFormModel) getMinimumHeight() int {
-	// Title: 1 line + 2 newlines = 3
-	titleLines := 3
-	// Config file info: 1 line + 2 newlines = 3
-	configLines := 3
-	// Host Names section: title (1) + spacing (2) = 3
-	hostSectionLines := 3
-	// Host inputs: number of hosts * 3 lines each (reduced from 4)
-	hostLines := len(m.hostInputs) * 3
-	// Properties section: title (1) + spacing (2) = 3
-	propertiesSectionLines := 3
-	// Tabs: 1 line + 2 newlines = 3
-	tabLines := 3
-	// Fields in current tab
-	var fieldsCount int
-	if m.currentTab == 0 {
-		fieldsCount = 6 // 6 fields in general tab
-	} else {
-		fieldsCount = 3 // 3 fields in advanced tab
-	}
-	// Each field: reduced from 4 to 3 lines per field
-	fieldsLines := fieldsCount * 3
-	// Help text: 3 lines
-	helpLines := 3
-	// Error message space when needed: 2 lines
-	errorLines := 0 // Only count when there's actually an error
-	if m.err != "" {
-		errorLines = 2
-	}
-
-	return titleLines + configLines + hostSectionLines + hostLines + propertiesSectionLines + tabLines + fieldsLines + helpLines + errorLines + 1 // +1 minimal safety margin
-}
-
-// isHeightSufficient checks if the current terminal height is sufficient
-func (m *editFormModel) isHeightSufficient() bool {
-	return m.height >= m.getMinimumHeight()
-}
-
-// renderHeightWarning renders a warning message when height is insufficient
-func (m *editFormModel) renderHeightWarning() string {
-	theme := GetCurrentTheme()
-	required := m.getMinimumHeight()
-	current := m.height
-
-	errorStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("203"))
-	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
-
-	warning := errorStyle.Render("[!] Terminal height is too small!")
-	details := infoStyle.Render(fmt.Sprintf("Current: %d lines, Required: %d lines", current, required))
-	instruction := infoStyle.Render("Please resize your terminal window.")
-	instruction2 := infoStyle.Render("Press Ctrl+C to cancel.")
-
-	content := warning + "\n\n" + details + "\n\n" + instruction + "\n" + instruction2
-
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("203")).
-		Padding(1, 2)
-
-	return lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		box.Render(content),
-	)
 }
 
 func (m *editFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -425,6 +305,9 @@ func (m *editFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.styles = NewStyles(m.width)
+		fitInputs(m.hostInputs, m.width)
+		fitInputs(m.inputs, m.width)
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -435,24 +318,6 @@ func (m *editFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			// Allow submission from any field with Ctrl+S (Save)
 			return m, m.submitEditForm()
-
-		case "ctrl+j":
-			// Switch to next tab
-			m.currentTab = (m.currentTab + 1) % 2
-			// If we're in hosts area, stay there. If in properties, go to the first field of the new tab
-			if m.focusArea == focusAreaProperties {
-				m.focused = m.getFirstPropertyForTab(m.currentTab)
-			}
-			return m, m.updateFocus()
-
-		case "ctrl+k":
-			// Switch to previous tab
-			m.currentTab = (m.currentTab - 1 + 2) % 2
-			// If we're in hosts area, stay there. If in properties, go to the first field of the new tab
-			if m.focusArea == focusAreaProperties {
-				m.focused = m.getFirstPropertyForTab(m.currentTab)
-			}
-			return m, m.updateFocus()
 
 		case "tab", "shift+tab", "enter", "up", "down":
 			return m, m.handleEditNavigation(msg.String())
@@ -497,197 +362,89 @@ func (m *editFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *editFormModel) View() string {
-	// Check if terminal height is sufficient
-	if !m.isHeightSufficient() {
-		return m.renderHeightWarning()
+	var lines []string
+	focusLine := noFocusLine
+
+	// addField records the line index of the focused row as it goes, so the
+	// screen can scroll to keep it visible on a short terminal.
+	addField := func(label string, required, focused bool, input string) {
+		if focused {
+			focusLine = len(lines)
+		}
+		lines = append(lines, formField(label, required, focused, input, formLabelWidth))
 	}
-
-	theme := GetCurrentTheme()
-	var b strings.Builder
-
-	// Title
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary))
-	b.WriteString(titleStyle.Render("EDIT SSH HOST"))
-	b.WriteString("\n\n")
 
 	// Config file info
 	if m.host != nil && m.host.SourceFile != "" {
-		infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
-		b.WriteString(infoStyle.Render("Config: " + formatConfigFile(m.host.SourceFile)))
-		b.WriteString("\n\n")
+		lines = append(lines, muted("config "+formatConfigFile(m.host.SourceFile)), "")
 	}
-
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted)).Width(16)
-	focusedLabelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary)).Width(16)
-	requiredStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
 
 	// Host Names Section
-	sectionStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Accent))
-	b.WriteString(sectionStyle.Render("Host Names"))
-	b.WriteString("\n")
+	lines = append(lines, accent("host names"))
 
 	for i, hostInput := range m.hostInputs {
-		label := fmt.Sprintf("Name %d", i+1) + requiredStyle.Render("*")
-		if m.focusArea == focusAreaHosts && m.focused == i {
-			b.WriteString(focusedLabelStyle.Render(label))
-			b.WriteString(" ")
-			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary)).Render("> "))
-		} else {
-			b.WriteString(labelStyle.Render(label))
-			b.WriteString("   ")
-		}
-		b.WriteString(hostInput.View())
-		b.WriteString("\n")
+		addField(
+			fmt.Sprintf("Name %d", i+1),
+			true,
+			m.focusArea == focusAreaHosts && m.focused == i,
+			hostInput.View(),
+		)
 	}
 
-	b.WriteString("\n")
+	lines = append(lines, "", accent("connection"))
 
-	// Tabs
-	b.WriteString(m.renderEditTabs())
-	b.WriteString("\n")
-
-	// Render current tab content
-	switch m.currentTab {
-	case 0:
-		b.WriteString(m.renderEditGeneralTab())
-	case 1:
-		b.WriteString(m.renderEditAdvancedTab())
+	for _, field := range editFields {
+		addField(
+			field.label,
+			field.required,
+			m.focusArea == focusAreaProperties && m.focused == field.index,
+			m.inputs[field.index].View(),
+		)
 	}
 
-	// Error message
-	if m.err != "" {
-		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-		b.WriteString(errorStyle.Render("Error: " + m.err))
-		b.WriteString("\n")
+	hints := []keyHint{
+		{"↑↓", "move"},
+		{"ctrl+a", "add name"},
 	}
-
-	// Help
-	b.WriteString("\n")
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
 	if len(m.hostInputs) > 1 {
-		b.WriteString(helpStyle.Render("↑/↓: navigate • Ctrl+J/K: tabs • Ctrl+A: add • Ctrl+D: delete"))
-	} else {
-		b.WriteString(helpStyle.Render("↑/↓: navigate • Ctrl+J/K: tabs • Ctrl+A: add host"))
+		hints = append(hints, keyHint{"ctrl+d", "remove name"})
 	}
-	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("Ctrl+S: save • Esc: cancel"))
+	hints = append(hints, keyHint{"ctrl+s", "save"}, keyHint{"esc", "cancel"})
 
-	content := b.String()
-
-	// Container with border
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(theme.Primary)).
-		Padding(1, 2)
-
-	// Logo
-	logo := m.styles.Header.Render(asciiTitle)
-
-	// Stack logo and container
-	fullContent := lipgloss.JoinVertical(lipgloss.Center, logo, "", box.Render(content))
-
-	return lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		fullContent,
-	)
+	return formScreenAt(m.width, m.height, "edit host",
+		strings.Join(lines, "\n"), m.err, focusLine, hints...)
 }
 
-// renderEditTabs renders the tab headers for properties
-func (m *editFormModel) renderEditTabs() string {
-	theme := GetCurrentTheme()
-
-	activeTab := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary))
-	inactiveTab := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
-
-	var generalTab, advancedTab string
-	if m.currentTab == 0 {
-		generalTab = activeTab.Render("[ General ]")
-		advancedTab = inactiveTab.Render("  Advanced  ")
-	} else {
-		generalTab = inactiveTab.Render("  General  ")
-		advancedTab = activeTab.Render("[ Advanced ]")
-	}
-
-	return generalTab + "  " + advancedTab
+// editField describes one property input.
+type editField struct {
+	index    int
+	label    string
+	required bool
 }
 
-// renderEditGeneralTab renders the general tab content for properties
-func (m *editFormModel) renderEditGeneralTab() string {
-	theme := GetCurrentTheme()
-	var b strings.Builder
-
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted)).Width(16)
-	focusedLabelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary)).Width(16)
-	requiredStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-
-	fields := []struct {
-		index    int
-		label    string
-		required bool
-	}{
-		{0, "Hostname", true},
-		{1, "User", false},
-		{2, "Port", false},
-		{3, "Identity File", false},
-		{4, "ProxyJump", false},
-		{6, "Tags", false},
-	}
-
-	for _, field := range fields {
-		label := field.label
-		if field.required {
-			label += requiredStyle.Render("*")
-		}
-
-		if m.focusArea == focusAreaProperties && m.focused == field.index {
-			b.WriteString(focusedLabelStyle.Render(label))
-			b.WriteString(" ")
-			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary)).Render("> "))
-		} else {
-			b.WriteString(labelStyle.Render(label))
-			b.WriteString("   ")
-		}
-		b.WriteString(m.inputs[field.index].View())
-		b.WriteString("\n")
-	}
-
-	return b.String()
+// editFields lists the editable properties in display order. Indices address
+// editFormModel.inputs, whose order is historical and not the display order.
+//
+// SSH Options, RemoteCommand and RequestTTY are deliberately absent. Their
+// inputs are still loaded from the host and read back on save, so a host that
+// has them keeps them; they are simply not offered for editing here.
+var editFields = []editField{
+	{0, "Hostname", true},
+	{1, "User", false},
+	{2, "Port", false},
+	{3, "Identity File", false},
+	{4, "ProxyJump", false},
+	{6, "Tags", false},
 }
 
-// renderEditAdvancedTab renders the advanced tab content for properties
-func (m *editFormModel) renderEditAdvancedTab() string {
-	theme := GetCurrentTheme()
-	var b strings.Builder
-
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted)).Width(16)
-	focusedLabelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.Primary)).Width(16)
-
-	fields := []struct {
-		index int
-		label string
-	}{
-		{5, "SSH Options"},
-		{7, "Remote Command"},
-		{8, "Request TTY"},
-	}
-
-	for _, field := range fields {
-		if m.focusArea == focusAreaProperties && m.focused == field.index {
-			b.WriteString(focusedLabelStyle.Render(field.label))
-			b.WriteString(" ")
-			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Primary)).Render("> "))
-		} else {
-			b.WriteString(labelStyle.Render(field.label))
-			b.WriteString("   ")
+// editFieldPosition returns the display position of a property input.
+func editFieldPosition(input int) int {
+	for i, field := range editFields {
+		if field.index == input {
+			return i
 		}
-		b.WriteString(m.inputs[field.index].View())
-		b.WriteString("\n")
 	}
-
-	return b.String()
+	return 0
 }
 
 // Standalone wrapper for edit form
@@ -789,7 +546,7 @@ func (m *editFormModel) submitEditForm() tea.Cmd {
 			Port:          port,
 			Identity:      identity,
 			ProxyJump:     proxyJump,
-			Options:       options,
+			Options:       config.ParseSSHOptionsFromCommand(options),
 			RemoteCommand: remoteCommand,
 			RequestTTY:    requestTTY,
 			Tags:          tags,

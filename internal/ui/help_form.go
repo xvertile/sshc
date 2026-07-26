@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -38,106 +40,95 @@ func (m *helpModel) Update(msg tea.Msg) (*helpModel, tea.Cmd) {
 	return m, nil
 }
 
+// helpEntry is one key binding shown in the help screen.
+type helpEntry struct {
+	key    string
+	action string
+}
+
+// helpSection groups related bindings under a heading.
+type helpSection struct {
+	title   string
+	entries []helpEntry
+}
+
+// helpSections is the full key map, kept here as data so the help screen and
+// the list footer cannot drift apart silently.
+var helpSections = []helpSection{
+	{"navigation", []helpEntry{
+		{"↵", "connect to selected host"},
+		{"↑ ↓", "move selection"},
+		{"/", "search hosts"},
+		{"tab", "switch focus"},
+		{"i", "show host information"},
+	}},
+	{"hosts", []helpEntry{
+		{"a", "add new host"},
+		{"e", "edit selected host"},
+		{"m", "move host to another config"},
+		{"d", "delete selected host"},
+		{"K", "add kubernetes host"},
+	}},
+	{"actions", []helpEntry{
+		{"p", "ping all hosts"},
+		{"f", "set up port forwarding"},
+		{"t", "quick file transfer"},
+		{"k", "upload SSH key to host"},
+	}},
+	{"view", []helpEntry{
+		{"s", "cycle sort modes"},
+		{"n", "sort by name"},
+		{"r", "sort by recent connection"},
+		{"c", "change theme"},
+		{"ctrl+s", "toggle start-in-search"},
+	}},
+}
+
+// helpColumnWidth is the width one column of bindings needs. Below two of
+// these the help falls back to a single column rather than being clipped.
+const helpColumnWidth = 38
+
 func (m *helpModel) View() string {
-	// Title
-	title := m.styles.Header.Render("SSHC - Commands")
+	var body string
 
-	// Create two columns of commands for better visual organization
-	leftColumn := lipgloss.JoinVertical(lipgloss.Left,
-		m.styles.FocusedLabel.Render("Navigation & Connection"),
-		"",
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("⏎  "),
-			m.styles.HelpText.Render("connect to selected host")),
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("i  "),
-			m.styles.HelpText.Render("show host information")),
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("/  "),
-			m.styles.HelpText.Render("search hosts")),
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("Tab "),
-			m.styles.HelpText.Render("switch focus")),
-		"",
-		m.styles.FocusedLabel.Render("Host Management"),
-		"",
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("a  "),
-			m.styles.HelpText.Render("add new host")),
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("e  "),
-			m.styles.HelpText.Render("edit selected host")),
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("m  "),
-			m.styles.HelpText.Render("move host to another config")),
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("d  "),
-			m.styles.HelpText.Render("delete selected host")),
-	)
+	inner := contentWidth(m.width)
 
-	rightColumn := lipgloss.JoinVertical(lipgloss.Left,
-		m.styles.FocusedLabel.Render("Advanced Features"),
-		"",
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("p  "),
-			m.styles.HelpText.Render("ping all hosts")),
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("f  "),
-			m.styles.HelpText.Render("setup port forwarding")),
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("t  "),
-			m.styles.HelpText.Render("quick file transfer (upload/download)")),
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("s  "),
-			m.styles.HelpText.Render("cycle sort modes")),
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("n  "),
-			m.styles.HelpText.Render("sort by name")),
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("r  "),
-			m.styles.HelpText.Render("sort by recent connection")),
-		"",
-		m.styles.FocusedLabel.Render("System"),
-		"",
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("c  "),
-			m.styles.HelpText.Render("change theme/colors")),
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("K  "),
-			m.styles.HelpText.Render("add kubernetes host")),
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("h  "),
-			m.styles.HelpText.Render("show this help")),
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("q  "),
-			m.styles.HelpText.Render("quit application")),
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			m.styles.FocusedLabel.Render("ESC "),
-			m.styles.HelpText.Render("exit current view")),
-	)
+	if inner < helpColumnWidth*2 {
+		body = renderHelpSections(helpSections)
+	} else {
+		// Two columns, split so both are roughly the same height.
+		half := (len(helpSections) + 1) / 2
 
-	// Join the two columns side by side
-	columns := lipgloss.JoinHorizontal(lipgloss.Top,
-		leftColumn,
-		"    ", // spacing between columns
-		rightColumn,
-	)
+		body = lipgloss.JoinHorizontal(lipgloss.Top,
+			lipgloss.NewStyle().Width(helpColumnWidth).Render(renderHelpSections(helpSections[:half])),
+			renderHelpSections(helpSections[half:]),
+		)
+	}
 
-	// Create the main content
-	content := lipgloss.JoinVertical(lipgloss.Center,
-		title,
-		"",
-		columns,
-		"",
-		m.styles.HelpText.Render("Press ESC, h, q or Enter to close"),
+	return formScreen(m.width, m.height, "commands", body, "",
+		keyHint{"esc", "close"},
 	)
+}
 
-	// Center the help window
-	return lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		m.styles.FormContainer.Render(content),
-	)
+// renderHelpSections renders a group of sections as a single column.
+func renderHelpSections(sections []helpSection) string {
+	var lines []string
+
+	for i, section := range sections {
+		if i > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, accent(section.title))
+
+		for _, entry := range sections[i].entries {
+			key := lipgloss.NewStyle().
+				Foreground(lipgloss.Color(GetCurrentTheme().Primary)).
+				Bold(true).
+				Width(8).
+				Render(entry.key)
+			lines = append(lines, "  "+key+muted(entry.action))
+		}
+	}
+
+	return strings.Join(lines, "\n")
 }

@@ -2,8 +2,8 @@ package ui
 
 import (
 	"fmt"
-	"path/filepath"
 	"github.com/xvertile/sshc/internal/config"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -134,29 +134,25 @@ func (m *fileSelectorModel) Update(msg tea.Msg) (*fileSelectorModel, tea.Cmd) {
 }
 
 func (m *fileSelectorModel) View() string {
-	var b strings.Builder
-
-	b.WriteString(m.styles.FormTitle.Render(m.title))
-	b.WriteString("\n\n")
-
 	if len(m.files) == 0 {
-		b.WriteString(m.styles.Error.Render("No SSH config files found."))
-		b.WriteString("\n\n")
-		b.WriteString(m.styles.FormHelp.Render("Esc: cancel"))
-		return b.String()
+		return formScreen(m.width, m.height, m.title,
+			muted("no SSH config files found"), "",
+			keyHint{"esc", "cancel"})
 	}
 
+	lines := make([]string, 0, len(m.displayNames))
 	for i, displayName := range m.displayNames {
 		if i == m.selected {
-			b.WriteString(m.styles.Selected.Render(fmt.Sprintf("▶ %s", displayName)))
+			lines = append(lines, m.styles.Selected.Render(" ▸ "+displayName+" "))
 		} else {
-			b.WriteString(fmt.Sprintf("  %s", displayName))
+			lines = append(lines, "   "+muted(displayName))
 		}
-		b.WriteString("\n")
 	}
 
-	b.WriteString("\n")
-	b.WriteString(m.styles.FormHelp.Render("↑/↓: navigate • Enter: select • Esc: cancel"))
-
-	return b.String()
+	return formScreen(m.width, m.height, m.title,
+		strings.Join(lines, "\n"), "",
+		keyHint{"↑↓", "move"},
+		keyHint{"↵", "select"},
+		keyHint{"esc", "cancel"},
+	)
 }

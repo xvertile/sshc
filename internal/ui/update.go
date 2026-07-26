@@ -101,9 +101,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.styles = NewStyles(m.width)
 		m.ready = true
 
-		// Update table height and columns based on new window size
-		m.updateTableHeight()
-		m.updateTableColumns()
+		// Rebuild the rows, not just the columns: rows are pre-padded to the
+		// column widths, so resizing the columns without them leaves the two
+		// disagreeing and the table renders skewed until something else
+		// happens to rebuild the rows.
+		m.updateTableRows()
 
 		// Update sub-forms if they exist
 		if m.addForm != nil {
@@ -221,13 +223,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.hosts = m.sortHosts(hosts)
 
-			// Reapply search filter if there is one active
-			if m.searchInput.Value() != "" {
-				m.filteredHosts = m.filterHosts(m.searchInput.Value())
-			} else {
-				m.filteredHosts = m.hosts
-			}
-
 			// Rebuild unified entries to include changes
 			m.rebuildEntries()
 			m.updateTableRows()
@@ -266,13 +261,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			m.hosts = m.sortHosts(hosts)
-
-			// Reapply search filter if there is one active
-			if m.searchInput.Value() != "" {
-				m.filteredHosts = m.filterHosts(m.searchInput.Value())
-			} else {
-				m.filteredHosts = m.hosts
-			}
 
 			// Rebuild unified entries to include changes
 			m.rebuildEntries()
@@ -313,13 +301,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			m.hosts = m.sortHosts(hosts)
-
-			// Reapply search filter if there is one active
-			if m.searchInput.Value() != "" {
-				m.filteredHosts = m.filterHosts(m.searchInput.Value())
-			} else {
-				m.filteredHosts = m.hosts
-			}
 
 			// Rebuild unified entries to include changes
 			m.rebuildEntries()
@@ -382,21 +363,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		} else {
-			// Success: execute SSH command with port forwarding
+			// Success: run the forward in the background and show its status,
+			// rather than handing the terminal to ssh and logging in.
 			if len(msg.sshArgs) > 0 {
-				sshCmd := exec.Command("ssh", msg.sshArgs...)
+				host := ""
+				if m.portForwardForm != nil {
+					host = m.portForwardForm.hostName
+				}
 
 				// Record the connection in history
-				if m.historyManager != nil && m.portForwardForm != nil {
-					err := m.historyManager.RecordConnection(m.portForwardForm.hostName)
-					if err != nil {
+				if m.historyManager != nil && host != "" {
+					if err := m.historyManager.RecordConnection(host); err != nil {
 						fmt.Printf("Warning: Could not record connection history: %v\n", err)
 					}
 				}
 
-				return m, tea.ExecProcess(sshCmd, func(err error) tea.Msg {
-					return tea.Quit()
-				})
+				m.portForwardActive = NewPortForwardSession(
+					host, msg.summary, msg.sshArgs, m.styles, m.width, m.height)
+				m.portForwardForm = nil
+				m.viewMode = ViewPortForwardSession
+
+				return m, m.portForwardActive.Init()
 			}
 
 			// If no SSH args, just return to list view
@@ -405,6 +392,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.table.Focus()
 			return m, nil
 		}
+
+	case portForwardTickMsg, portForwardExitedMsg:
+		if m.portForwardActive != nil {
+			var session *portForwardSessionModel
+			session, cmd = m.portForwardActive.Update(msg)
+			m.portForwardActive = session
+			return m, cmd
+		}
+		return m, nil
+
+	case portForwardClosedMsg:
+		// The forward has been stopped; back to the list.
+		m.viewMode = ViewList
+		m.portForwardActive = nil
+		m.table.Focus()
+		return m, nil
 
 	case portForwardCancelMsg:
 		// Cancel: return to list view
@@ -526,7 +529,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			m.k8sHosts = k8sHosts
-			m.filteredK8sHosts = k8sHosts
 			m.rebuildEntries()
 			m.updateTableRows()
 			m.viewMode = ViewList
@@ -556,7 +558,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			m.k8sHosts = k8sHosts
-			m.filteredK8sHosts = k8sHosts
 			m.rebuildEntries()
 			m.updateTableRows()
 			m.viewMode = ViewList
@@ -579,8 +580,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			_ = config.SaveAppConfig(m.appConfig)
 		}
 		SetThemeByName(msg.themeName)
-		m.styles = NewStyles(m.width)
-		m.updateTableStyles()
+		m.applyTheme()
 		m.viewMode = ViewList
 		m.themePicker = nil
 		m.table.Focus()
@@ -591,8 +591,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.appConfig != nil {
 			SetThemeByName(m.appConfig.Theme)
 		}
-		m.styles = NewStyles(m.width)
-		m.updateTableStyles()
+		m.applyTheme()
 		m.viewMode = ViewList
 		m.themePicker = nil
 		m.table.Focus()
@@ -644,6 +643,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				var newForm *infoFormModel
 				newForm, cmd = m.infoForm.Update(msg)
 				m.infoForm = newForm
+				return m, cmd
+			}
+		case ViewPortForwardSession:
+			if m.portForwardActive != nil {
+				var session *portForwardSessionModel
+				session, cmd = m.portForwardActive.Update(msg)
+				m.portForwardActive = session
 				return m, cmd
 			}
 		case ViewPortForward:
@@ -811,7 +817,6 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					k8sHosts, parseErr := config.ParseK8sConfig()
 					if parseErr == nil {
 						m.k8sHosts = k8sHosts
-						m.filteredK8sHosts = k8sHosts
 					}
 				}
 			} else {
@@ -830,11 +835,6 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						hosts, _ = config.ParseSSHConfig()
 					}
 					m.hosts = m.sortHosts(hosts)
-					if m.searchInput.Value() != "" {
-						m.filteredHosts = m.filterHosts(m.searchInput.Value())
-					} else {
-						m.filteredHosts = m.hosts
-					}
 				}
 			}
 			if err != nil {
@@ -856,10 +856,9 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		} else {
 			// Connect to the selected host
-			selected := m.table.SelectedRow()
-			if len(selected) > 0 {
-				hostName := extractHostNameFromTableRow(selected[0])
-				isK8s := isK8sHostFromTableRow(selected[0])
+			if entry := m.selectedEntry(); entry != nil {
+				hostName := entry.Name
+				isK8s := entry.IsK8s
 
 				// Store connection info for retry
 				m.connectionHost = hostName
@@ -902,10 +901,9 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "e":
 		if !m.searchMode && !m.deleteMode {
 			// Edit the selected host
-			selected := m.table.SelectedRow()
-			if len(selected) > 0 {
-				hostName := extractHostNameFromTableRow(selected[0])
-				isK8s := isK8sHostFromTableRow(selected[0])
+			if entry := m.selectedEntry(); entry != nil {
+				hostName := entry.Name
+				isK8s := entry.IsK8s
 
 				if isK8s {
 					// Edit k8s host
@@ -930,10 +928,9 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "m":
 		if !m.searchMode && !m.deleteMode {
 			// Move the selected host to another config file
-			selected := m.table.SelectedRow()
-			if len(selected) > 0 {
+			if entry := m.selectedEntry(); entry != nil {
 				// Check if it's a k8s host
-				if isK8sHostFromTableRow(selected[0]) {
+				if entry.IsK8s {
 					m.errorMessage = "Move is not supported for Kubernetes hosts"
 					m.showingError = true
 					return m, func() tea.Msg {
@@ -941,7 +938,7 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						return errorMsg("clear")
 					}
 				}
-				hostName := extractHostNameFromTableRow(selected[0])
+				hostName := entry.Name
 				moveForm, err := NewMoveForm(hostName, m.styles, m.width, m.height, m.configFile)
 				if err != nil {
 					// Show error message to user
@@ -960,11 +957,10 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "i":
 		if !m.searchMode && !m.deleteMode {
 			// Show info for the selected host
-			selected := m.table.SelectedRow()
-			if len(selected) > 0 {
+			if entry := m.selectedEntry(); entry != nil {
 				// Check if it's a k8s host - show basic info in error message for now
-				if isK8sHostFromTableRow(selected[0]) {
-					hostName := extractHostNameFromTableRow(selected[0])
+				if entry.IsK8s {
+					hostName := entry.Name
 					k8sHost, err := config.GetK8sHost(hostName)
 					if err != nil {
 						return m, nil
@@ -982,8 +978,7 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						return errorMsg("clear")
 					}
 				}
-				hostName := extractHostNameFromTableRow(selected[0])
-				infoForm, err := NewInfoForm(hostName, m.styles, m.width, m.height, m.configFile)
+				infoForm, err := NewInfoForm(entry.Name, m.styles, m.width, m.height, m.configFile)
 				if err != nil {
 					// Handle error - could show in UI
 					return m, nil
@@ -1034,13 +1029,10 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "d":
 		if !m.searchMode && !m.deleteMode {
 			// Delete the selected host
-			selected := m.table.SelectedRow()
-			if len(selected) > 0 {
-				hostName := extractHostNameFromTableRow(selected[0])
-				isK8s := isK8sHostFromTableRow(selected[0])
+			if entry := m.selectedEntry(); entry != nil {
 				m.deleteMode = true
-				m.deleteHost = hostName
-				m.deleteHostIsK8s = isK8s
+				m.deleteHost = entry.Name
+				m.deleteHostIsK8s = entry.IsK8s
 				m.table.Blur()
 				return m, nil
 			}
@@ -1060,10 +1052,9 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "f":
 		if !m.searchMode && !m.deleteMode {
 			// Port forwarding for the selected host
-			selected := m.table.SelectedRow()
-			if len(selected) > 0 {
+			if entry := m.selectedEntry(); entry != nil {
 				// Check if it's a k8s host
-				if isK8sHostFromTableRow(selected[0]) {
+				if entry.IsK8s {
 					m.errorMessage = "Port forwarding is not supported for Kubernetes hosts"
 					m.showingError = true
 					return m, func() tea.Msg {
@@ -1071,8 +1062,7 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						return errorMsg("clear")
 					}
 				}
-				hostName := extractHostNameFromTableRow(selected[0])
-				m.portForwardForm = NewPortForwardForm(hostName, m.styles, m.width, m.height, m.configFile, m.historyManager)
+				m.portForwardForm = NewPortForwardForm(entry.Name, m.styles, m.width, m.height, m.configFile, m.historyManager)
 				m.viewMode = ViewPortForward
 				return m, textinput.Blink
 			}
@@ -1080,10 +1070,9 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "t":
 		if !m.searchMode && !m.deleteMode {
 			// Quick file transfer for the selected host
-			selected := m.table.SelectedRow()
-			if len(selected) > 0 {
+			if entry := m.selectedEntry(); entry != nil {
 				// Check if it's a k8s host
-				if isK8sHostFromTableRow(selected[0]) {
+				if entry.IsK8s {
 					m.errorMessage = "File transfer is not supported for Kubernetes hosts"
 					m.showingError = true
 					return m, func() tea.Msg {
@@ -1091,8 +1080,7 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						return errorMsg("clear")
 					}
 				}
-				hostName := extractHostNameFromTableRow(selected[0])
-				m.quickTransferForm = NewQuickTransfer(hostName, m.styles, m.width, m.height, m.configFile)
+				m.quickTransferForm = NewQuickTransfer(entry.Name, m.styles, m.width, m.height, m.configFile)
 				m.viewMode = ViewQuickTransfer
 				return m, nil
 			}
@@ -1132,10 +1120,9 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "k":
 		if !m.searchMode && !m.deleteMode {
 			// Upload SSH key to the selected host
-			selected := m.table.SelectedRow()
-			if len(selected) > 0 {
+			if entry := m.selectedEntry(); entry != nil {
 				// Check if it's a k8s host
-				if isK8sHostFromTableRow(selected[0]) {
+				if entry.IsK8s {
 					m.errorMessage = "SSH key upload is not supported for Kubernetes hosts"
 					m.showingError = true
 					return m, func() tea.Msg {
@@ -1143,8 +1130,7 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						return errorMsg("clear")
 					}
 				}
-				hostName := extractHostNameFromTableRow(selected[0])
-				m.sshKeyUploadForm = NewSSHKeyUploadForm(hostName, m.styles, m.width, m.height, m.configFile)
+				m.sshKeyUploadForm = NewSSHKeyUploadForm(entry.Name, m.styles, m.width, m.height, m.configFile)
 				m.viewMode = ViewSSHKeyUpload
 				return m, textinput.Blink
 			}
@@ -1155,11 +1141,7 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sortMode = (m.sortMode + 1) % 2
 			m.saveSortMode()
 			// Re-apply the current filter/sort with the new sort mode
-			if m.searchInput.Value() != "" {
-				m.filteredEntries = m.sortEntries(m.filterEntries(m.searchInput.Value()))
-			} else {
-				m.filteredEntries = m.sortEntries(m.allEntries)
-			}
+			m.applyFilter()
 			m.updateTableRows()
 			return m, nil
 		}
@@ -1169,11 +1151,7 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sortMode = SortByLastUsed
 			m.saveSortMode()
 			// Re-apply the current filter/sort with the new sort mode
-			if m.searchInput.Value() != "" {
-				m.filteredEntries = m.sortEntries(m.filterEntries(m.searchInput.Value()))
-			} else {
-				m.filteredEntries = m.sortEntries(m.allEntries)
-			}
+			m.applyFilter()
 			m.updateTableRows()
 			return m, nil
 		}
@@ -1183,11 +1161,7 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sortMode = SortByName
 			m.saveSortMode()
 			// Re-apply the current filter/sort with the new sort mode
-			if m.searchInput.Value() != "" {
-				m.filteredEntries = m.sortEntries(m.filterEntries(m.searchInput.Value()))
-			} else {
-				m.filteredEntries = m.sortEntries(m.allEntries)
-			}
+			m.applyFilter()
 			m.updateTableRows()
 			return m, nil
 		}
@@ -1197,22 +1171,22 @@ func (m Model) handleListViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.searchMode {
 		oldValue := m.searchInput.Value()
 		m.searchInput, cmd = m.searchInput.Update(msg)
-		// Update filtered entries only if the search value has changed
+		// Update filtered entries only if the search value has changed.
+		// updateTableRows clamps the cursor into the new row set.
 		if m.searchInput.Value() != oldValue {
-			currentCursor := m.table.Cursor()
-			if m.searchInput.Value() != "" {
-				m.filteredEntries = m.filterEntries(m.searchInput.Value())
-			} else {
-				m.filteredEntries = m.allEntries
-			}
+			m.applyFilter()
 			m.updateTableRows()
-			// If the current cursor position is beyond the filtered results, reset to 0
-			if currentCursor >= len(m.filteredEntries) && len(m.filteredEntries) > 0 {
-				m.table.SetCursor(0)
-			}
 		}
 	} else {
+		// The selected row is rendered unstyled so the selection bar paints
+		// cleanly, so moving the cursor changes two rows' styling and the
+		// rows have to be rebuilt.
+		previousCursor := m.table.Cursor()
 		m.table, cmd = m.table.Update(msg)
+
+		if m.table.Cursor() != previousCursor {
+			m.updateTableRows()
+		}
 	}
 
 	return m, cmd

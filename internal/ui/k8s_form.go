@@ -100,6 +100,8 @@ func NewK8sAddForm(styles Styles, width, height int) *k8sAddFormModel {
 	inputs[k8sTagsInput].CharLimit = 200
 	inputs[k8sTagsInput].Width = 50
 
+	fitInputs(inputs, width)
+
 	return &k8sAddFormModel{
 		inputs:  inputs,
 		focused: k8sNameInput,
@@ -121,6 +123,7 @@ func (m *k8sAddFormModel) Update(msg tea.Msg) (*k8sAddFormModel, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.styles = NewStyles(m.width)
+		fitInputs(m.inputs, m.width)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -162,17 +165,13 @@ func (m *k8sAddFormModel) handleNavigation(key string) tea.Cmd {
 	}
 
 	// Navigate between inputs
+	// Stop at either end rather than wrapping around.
 	if key == "up" || key == "shift+tab" {
-		m.focused--
-	} else {
+		if m.focused > 0 {
+			m.focused--
+		}
+	} else if m.focused < len(m.inputs)-1 {
 		m.focused++
-	}
-
-	// Wrap around
-	if m.focused >= len(m.inputs) {
-		m.focused = 0
-	} else if m.focused < 0 {
-		m.focused = len(m.inputs) - 1
 	}
 
 	return m.updateFocus()
@@ -252,48 +251,39 @@ func (m *k8sAddFormModel) View() string {
 		return ""
 	}
 
-	var b strings.Builder
+	return formScreen(m.width, m.height, "add kubernetes host",
+		m.renderK8sFields(), m.err,
+		keyHint{"↵", "next"},
+		keyHint{"↑↓", "move"},
+		keyHint{"ctrl+s", "save"},
+		keyHint{"esc", "cancel"},
+	)
+}
 
-	b.WriteString(m.styles.FormTitle.Render("Add Kubernetes Host"))
-	b.WriteString("\n\n")
+// k8sFormFields is the field layout shared by the add and edit k8s forms.
+var k8sFormFields = []struct {
+	index    int
+	label    string
+	required bool
+}{
+	{k8sNameInput, "Display Name", true},
+	{k8sNamespaceInput, "Namespace", true},
+	{k8sPodInput, "Pod Name", true},
+	{k8sContainerInput, "Container", false},
+	{k8sContextInput, "Context", false},
+	{k8sKubeconfigInput, "Kubeconfig", false},
+	{k8sShellInput, "Shell", false},
+	{k8sTagsInput, "Tags", false},
+}
 
-	fields := []struct {
-		index int
-		label string
-	}{
-		{k8sNameInput, "Display Name *"},
-		{k8sNamespaceInput, "Namespace *"},
-		{k8sPodInput, "Pod Name *"},
-		{k8sContainerInput, "Container"},
-		{k8sContextInput, "Kubectl Context"},
-		{k8sKubeconfigInput, "Kubeconfig Path"},
-		{k8sShellInput, "Shell"},
-		{k8sTagsInput, "Tags (comma-separated)"},
+// renderK8sFields renders the k8s field rows for the add form.
+func (m *k8sAddFormModel) renderK8sFields() string {
+	lines := make([]string, 0, len(k8sFormFields))
+	for _, field := range k8sFormFields {
+		lines = append(lines, formField(field.label, field.required,
+			m.focused == field.index, m.inputs[field.index].View(), formLabelWidth))
 	}
-
-	for _, field := range fields {
-		fieldStyle := m.styles.FormField
-		if m.focused == field.index {
-			fieldStyle = m.styles.FocusedLabel
-		}
-		b.WriteString(fieldStyle.Render(field.label))
-		b.WriteString("\n")
-		b.WriteString(m.inputs[field.index].View())
-		b.WriteString("\n\n")
-	}
-
-	if m.err != "" {
-		b.WriteString(m.styles.Error.Render("Error: " + m.err))
-		b.WriteString("\n\n")
-	}
-
-	b.WriteString(m.styles.FormHelp.Render("Tab/Shift+Tab: navigate • Enter on last field: submit"))
-	b.WriteString("\n")
-	b.WriteString(m.styles.FormHelp.Render("Ctrl+S: save • Ctrl+C/Esc: cancel"))
-	b.WriteString("\n")
-	b.WriteString(m.styles.FormHelp.Render("* Required fields"))
-
-	return b.String()
+	return strings.Join(lines, "\n")
 }
 
 // validationError for form validation
@@ -308,13 +298,13 @@ func (e *validationError) Error() string {
 
 // k8sEditFormModel represents the form for editing a k8s host
 type k8sEditFormModel struct {
-	inputs      []textinput.Model
-	focused     int
-	err         string
-	styles      Styles
-	success     bool
-	width       int
-	height      int
+	inputs       []textinput.Model
+	focused      int
+	err          string
+	styles       Styles
+	success      bool
+	width        int
+	height       int
 	originalName string
 }
 
@@ -408,6 +398,7 @@ func (m *k8sEditFormModel) Update(msg tea.Msg) (*k8sEditFormModel, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.styles = NewStyles(m.width)
+		fitInputs(m.inputs, m.width)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -447,16 +438,13 @@ func (m *k8sEditFormModel) handleNavigation(key string) tea.Cmd {
 		return m.submitForm()
 	}
 
+	// Stop at either end rather than wrapping around.
 	if key == "up" || key == "shift+tab" {
-		m.focused--
-	} else {
+		if m.focused > 0 {
+			m.focused--
+		}
+	} else if m.focused < len(m.inputs)-1 {
 		m.focused++
-	}
-
-	if m.focused >= len(m.inputs) {
-		m.focused = 0
-	} else if m.focused < 0 {
-		m.focused = len(m.inputs) - 1
 	}
 
 	return m.updateFocus()
@@ -529,46 +517,17 @@ func (m *k8sEditFormModel) View() string {
 		return ""
 	}
 
-	var b strings.Builder
-
-	b.WriteString(m.styles.FormTitle.Render("Edit Kubernetes Host"))
-	b.WriteString("\n\n")
-
-	fields := []struct {
-		index int
-		label string
-	}{
-		{k8sNameInput, "Display Name *"},
-		{k8sNamespaceInput, "Namespace *"},
-		{k8sPodInput, "Pod Name *"},
-		{k8sContainerInput, "Container"},
-		{k8sContextInput, "Kubectl Context"},
-		{k8sKubeconfigInput, "Kubeconfig Path"},
-		{k8sShellInput, "Shell"},
-		{k8sTagsInput, "Tags (comma-separated)"},
+	lines := make([]string, 0, len(k8sFormFields))
+	for _, field := range k8sFormFields {
+		lines = append(lines, formField(field.label, field.required,
+			m.focused == field.index, m.inputs[field.index].View(), formLabelWidth))
 	}
 
-	for _, field := range fields {
-		fieldStyle := m.styles.FormField
-		if m.focused == field.index {
-			fieldStyle = m.styles.FocusedLabel
-		}
-		b.WriteString(fieldStyle.Render(field.label))
-		b.WriteString("\n")
-		b.WriteString(m.inputs[field.index].View())
-		b.WriteString("\n\n")
-	}
-
-	if m.err != "" {
-		b.WriteString(m.styles.Error.Render("Error: " + m.err))
-		b.WriteString("\n\n")
-	}
-
-	b.WriteString(m.styles.FormHelp.Render("Tab/Shift+Tab: navigate • Enter on last field: submit"))
-	b.WriteString("\n")
-	b.WriteString(m.styles.FormHelp.Render("Ctrl+S: save • Ctrl+C/Esc: cancel"))
-	b.WriteString("\n")
-	b.WriteString(m.styles.FormHelp.Render("* Required fields"))
-
-	return b.String()
+	return formScreen(m.width, m.height, "edit kubernetes host",
+		strings.Join(lines, "\n"), m.err,
+		keyHint{"↵", "next"},
+		keyHint{"↑↓", "move"},
+		keyHint{"ctrl+s", "save"},
+		keyHint{"esc", "cancel"},
+	)
 }

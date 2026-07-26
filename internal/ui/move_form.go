@@ -127,8 +127,9 @@ func (m *moveFormModel) View() string {
 		return "Loading..."
 
 	case moveFormProcessing:
-		return m.styles.FormTitle.Render("Moving host...") + "\n\n" +
-			m.styles.HelpText.Render(fmt.Sprintf("Moving host '%s' to selected config file...", m.hostName))
+		return formScreen(m.width, m.height,
+			"move "+m.hostName,
+			accent("moving to selected config file…"), "")
 
 	default:
 		return "Unknown state"
